@@ -524,6 +524,20 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           sets.push(`${f} = $${values.length}`);
         }
       }
+      // Category change => re-assign the photo from the NEW category's pool,
+      // so the card never shows an image that contradicts its category.
+      if (d.category !== undefined) {
+        const img = pickImage(d.category, String(req.params.sku));
+        for (const [col, val] of [
+          ['image_url', img?.url ?? null],
+          ['image_photographer', img?.photographer ?? null],
+          ['image_photographer_url', img?.photographer_url ?? null],
+          ['image_unsplash_url', img?.unsplash_url ?? null],
+        ] as const) {
+          values.push(val);
+          sets.push(`${col} = $${values.length}`);
+        }
+      }
       if (values.length === 0) {
         res.status(400).json({ error: 'no fields to update' });
         return;
