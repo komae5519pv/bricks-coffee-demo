@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate production-shaped seed data for the DAIWT coffee shop app.
 
-Simulates a global coffee chain: 12 stores across JP/US/UK/SG/AU/FR/DE,
-localized menus (ja/en), 924 SKUs, and 7,284 historical order lines.
+A global coffee chain presented as a Japanese brand: 12 stores across
+JP/US/UK/SG/AU/FR/DE, all menu data in Japanese, all prices in JPY
+(legacy local prices converted x100). 924 SKUs, 7,284 historical order lines.
 Output: server/seed/{stores,menu_items,historical_orders}.json
 """
 import json, random, pathlib
@@ -82,10 +83,26 @@ PRICE_FACTOR = {'JPY': 145, 'USD': 1.0, 'GBP': 0.82, 'SGD': 1.32, 'AUD': 1.48, '
 SIZE_MULT = {'S': 0.9, 'M': 1.0, 'L': 1.1, 'N/A': 1.0}
 REGION_OF = {'JP': ['JP'], 'US': ['US'], 'UK': ['UK'], 'SG': ['SG'], 'AU': ['AU'], 'FR': ['FR'], 'DE': ['DE']}
 
-def round_price(v, currency):
-    if currency == 'JPY':
-        return round(v / 10) * 10
-    return round(v * 2) / 2
+# 2026-09-24 方針: 日本のコーヒーチェーンとして全店・日本語表記・円建てに統一。
+# カテゴリ名も日本語化(カテゴリ定数は英語のままキーとして使い、出力時に変換)。
+JA_CATEGORIES = {
+    'Brewed Coffee': 'ドリップコーヒー',
+    'Espresso': 'エスプレッソ',
+    'Cold Brew & Iced': 'コールドブリュー&アイス',
+    'Tea & Matcha': 'ティー&抹茶',
+    'Seasonal': '季節のおすすめ',
+    'Frappé & Blended': 'フラッペ&ブレンデッド',
+    'Pastry': 'ペイストリー',
+    'Sandwich & Food': 'サンドイッチ&フード',
+}
+
+def price_jpy(st_currency, base, size):
+    """円建ての統一ルール: 従来の現地通貨価格を x100 (A$8.50 -> ¥850)。
+    JP 店は従来から円建てなので従来式のまま(10円丸め)。"""
+    if st_currency == 'JPY':
+        return round(base * SIZE_MULT[size] * PRICE_FACTOR['JPY'] / 10) * 10
+    local = round(base * SIZE_MULT[size] * PRICE_FACTOR[st_currency] * 2) / 2
+    return int(round(local * 100))
 
 menu_items = []
 for st in STORES:
@@ -97,19 +114,16 @@ for st in STORES:
         if random.random() < 0.08:
             continue
         for size in sizes:
-            price = round_price(base * SIZE_MULT[size] * PRICE_FACTOR[st['currency']], st['currency'])
-            name = ja if st['locale'] == 'ja' else en
-            desc = ja_d if st['locale'] == 'ja' else en_d
             menu_items.append({
                 'sku': f"{st['store_id']}-{key}-{size.replace('/','')}",
                 'store_id': st['store_id'],
                 'item_key': key,
-                'item_name': name,
-                'category': cat,
+                'item_name': ja,
+                'category': JA_CATEGORIES[cat],
                 'size': size,
-                'price': price,
-                'currency': st['currency'],
-                'description': desc,
+                'price': price_jpy(st['currency'], base, size),
+                'currency': 'JPY',
+                'description': ja_d,
                 'active': random.random() > 0.02,
             })
 
@@ -155,7 +169,9 @@ for day in range(0, 610):
                 })
 
 OUTDIR.mkdir(parents=True, exist_ok=True)
-(OUTDIR / 'stores.json').write_text(json.dumps(STORES, ensure_ascii=False), encoding='utf-8')
+# 店舗マスタの表示通貨も円に統一(価格計算は上記の元通貨ベース x100 ルールで済んでいる)
+stores_out = [{**st, 'currency': 'JPY'} for st in STORES]
+(OUTDIR / 'stores.json').write_text(json.dumps(stores_out, ensure_ascii=False), encoding='utf-8')
 (OUTDIR / 'menu_items.json').write_text(json.dumps(menu_items, ensure_ascii=False), encoding='utf-8')
 (OUTDIR / 'historical_orders.json').write_text(json.dumps(historical, ensure_ascii=False), encoding='utf-8')
 print('stores:', len(STORES))
