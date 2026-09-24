@@ -413,7 +413,9 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
       try {
         const lakebase = await getLakebaseStatus(spDb);
         const delta = await getDeltaSyncStatus(lakebase.latest_order?.created_at ?? null);
-        const workspaceHost = (process.env.DATABRICKS_HOST ?? '').replace(/\/$/, '');
+        const workspaceHost = (process.env.DATABRICKS_HOST ?? '')
+          .replace(/\/$/, '')
+          .replace(/^(?!https?:\/\/)/, 'https://');
         const genieSpaceId = process.env.GENIE_SPACE_ID ?? '';
         res.json({
           agent: {

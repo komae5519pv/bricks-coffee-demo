@@ -84,7 +84,7 @@ export async function getDeltaSyncStatus(lakebaseLatestOrderCreatedAt: string | 
   const schema = process.env.COFFEE_SCHEMA ?? '';
   try {
     const rows = await runStatement(
-      `SELECT count(*)::text, max(_timestamp)::text, max(created_at)::text FROM ${catalog}.${schema}.lb_orders_history`,
+      `SELECT CAST(count(*) AS STRING), CAST(max(_timestamp) AS STRING), CAST(max(created_at) AS STRING) FROM ${catalog}.${schema}.lb_orders_history`,
     );
     const [count, lastChange, lastCreated] = rows[0] ?? ['0', null, null];
     let lag: number | null = null;
