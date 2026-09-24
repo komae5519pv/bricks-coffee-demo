@@ -1,17 +1,26 @@
 #!/usr/bin/env node
 /**
- * Visual verification: screenshot the order tab with menu photos.
+ * Visual verification: screenshot the order tab + admin menu with photos.
  * Uses a Playwright context with the OAuth bearer token injected, so the
  * Databricks Apps front-door lets the SPA through without interactive SSO.
  *
- *   APP_TOKEN=<token> node tools/verify_photos.mjs [outfile]
+ * The token is accepted ONLY via the APP_TOKEN env var (never read from
+ * files, never hardcoded):
+ *
+ *   APP_TOKEN=$(databricks auth token --profile fevm-konomi-demo -o json | jq -r .access_token) \
+ *     node tools/verify_photos.mjs [orderOutfile] [adminOutfile]
  */
-import { readFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const APP = process.env.APP_URL ?? 'https://daiwt-coffee-shop-7474646087200844.aws.databricksapps.com';
-const TOKEN = process.env.APP_TOKEN ?? readFileSync('/tmp/app_token.txt', 'utf8').trim();
-const OUT = process.argv[2] ?? '/tmp/daiwt-coffee-photos.png';
+const TOKEN = process.env.APP_TOKEN;
+if (!TOKEN) {
+  console.error('APP_TOKEN env var is required (OAuth access token). Example:');
+  console.error('  APP_TOKEN=$(databricks auth token --profile fevm-konomi-demo -o json | jq -r .access_token) node tools/verify_photos.mjs');
+  process.exit(1);
+}
+const ORDER_OUT = process.argv[2] ?? '/tmp/daiwt-coffee-photos.png';
+const ADMIN_OUT = process.argv[3] ?? '/tmp/daiwt-coffee-admin.png';
 
 const browser = await chromium.launch();
 const context = await browser.newContext({
@@ -25,27 +34,42 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => consoleErrors.push(String(e)));
 
+async function imageStats() {
+  return page.evaluate(() => {
+    const imgs = Array.from(document.querySelectorAll('img[loading="lazy"]'));
+    const loaded = imgs.filter((i) => i.complete && i.naturalWidth > 0);
+    const distinctSrc = new Set(imgs.map((i) => i.src));
+    const credits = document.body.innerText.match(/Photo by .+ on Unsplash/g) ?? [];
+    return { imgs: imgs.length, loaded: loaded.length, distinctSrc: distinctSrc.size, credits: credits.length };
+  });
+}
+
+// --- order tab ---
 await page.goto(APP, { waitUntil: 'networkidle', timeout: 60000 });
 await page.getByRole('button', { name: /追加/ }).first().waitFor({ timeout: 30000 });
-// let lazy images settle
-await page.waitForTimeout(4000);
+await page.waitForTimeout(4000); // let lazy images settle
+const order = await imageStats();
+console.log('order tab:', JSON.stringify(order));
+await page.screenshot({ path: ORDER_OUT });
+console.log('screenshot:', ORDER_OUT);
 
-const stats = await page.evaluate(() => {
-  const imgs = Array.from(document.querySelectorAll('img[loading="lazy"]'));
-  const loaded = imgs.filter((i) => i.complete && i.naturalWidth > 0);
-  const distinctSrc = new Set(imgs.map((i) => i.src));
-  const credits = document.body.innerText.match(/Photo by .+ on Unsplash/g) ?? [];
-  return { imgs: imgs.length, loaded: loaded.length, distinctSrc: distinctSrc.size, credits: credits.length };
-});
-console.log('image stats:', JSON.stringify(stats));
+// --- admin menu (staff) ---
+await page.goto(`${APP}/admin/menu`, { waitUntil: 'networkidle', timeout: 60000 });
+await page.locator('table').waitFor({ timeout: 30000 });
+await page.waitForTimeout(3000);
+const admin = await imageStats();
+console.log('admin menu:', JSON.stringify(admin));
+await page.screenshot({ path: ADMIN_OUT });
+console.log('screenshot:', ADMIN_OUT);
 
-await page.screenshot({ path: OUT, fullPage: false });
-console.log('screenshot:', OUT);
 console.log('console errors:', consoleErrors.length ? consoleErrors : 'none');
 await browser.close();
 
-if (stats.imgs === 0 || stats.loaded === 0 || stats.credits === 0) {
-  console.error('VERIFICATION FAILED: images or credits missing');
+const failures = [];
+if (order.imgs === 0 || order.loaded === 0 || order.credits === 0) failures.push('order tab: images or credits missing');
+if (admin.imgs === 0 || admin.loaded === 0 || admin.credits === 0) failures.push('admin menu: images or credits missing');
+if (failures.length) {
+  console.error('VERIFICATION FAILED:', failures.join(' / '));
   process.exit(1);
 }
 console.log('VERIFICATION PASSED');
