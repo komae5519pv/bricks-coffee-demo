@@ -92,12 +92,29 @@ const INSTRUCTIONS = `
 - 迷っているユーザーには、好み(甘い/さっぱり/温かい/冷たい等)を聞いて search_menu で候補を絞ること。
 `;
 
+/**
+ * The serving plugin is not an agents "tool provider" (only lakebase/agents
+ * are), so the embeddings invoker cannot come from `tools(plugins)`. It is
+ * injected from server.ts onPluginsReady instead, and read lazily at tool
+ * execution time (the agent registry is built before plugins are ready).
+ */
+let embeddingsInvoker: EmbeddingsInvoker | null = null;
+
+export function setBaristaEmbeddings(invoker: EmbeddingsInvoker): void {
+  embeddingsInvoker = invoker;
+}
+
 export const barista = createAgent({
   name: 'barista',
   instructions: INSTRUCTIONS,
   tools(plugins) {
     const db = requirePlugin<DbLike>(plugins.lakebase, 'lakebase', ['query']);
-    const serving = requirePlugin<EmbeddingsInvoker>(plugins.serving, 'serving', ['invoke']);
+    const serving: EmbeddingsInvoker = {
+      invoke: (alias, body) =>
+        embeddingsInvoker
+          ? embeddingsInvoker.invoke(alias, body)
+          : Promise.resolve({ ok: false as const, status: 503, message: 'embedding endpoint not initialized yet' }),
+    };
 
     return {
       get_stores: tool({

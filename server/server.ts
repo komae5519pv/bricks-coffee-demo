@@ -8,7 +8,7 @@
  */
 import { createApp, lakebase, server, serving } from '@databricks/appkit';
 import { agents } from '@databricks/appkit/beta';
-import { barista } from './agents/barista';
+import { barista, setBaristaEmbeddings } from './agents/barista';
 import { initializeDatabase } from './db';
 import { registerCoffeeRoutes } from './routes';
 import type { EmbeddingsInvoker } from './lib/embed';
@@ -43,6 +43,7 @@ const appkit = await createApp({
         return { rows: r.rows as T[], rowCount: r.rowCount };
       },
     };
+    setBaristaEmbeddings(embeddings);
     await initializeDatabase(spDb, embeddings);
     registerCoffeeRoutes(handle, embeddings);
   },
