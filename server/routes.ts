@@ -75,9 +75,24 @@ const menuUpsertSchema = z.object({
 const menuPatchSchema = menuUpsertSchema.partial().omit({ store_id: true, item_key: true });
 
 export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvoker): void {
-  const spDb: DbLike = { query: (t, v) => spDb.query(t, v) };
+  /** Service-principal pool: public reference data + startup/monitoring queries. */
+  const spDb: DbLike = {
+    query: async <T = any>(t: string, v?: unknown[]) => {
+      const r = await appkit.lakebase.query(t, v);
+      return { rows: r.rows as T[], rowCount: r.rowCount };
+    },
+  };
+  /**
+   * Per-user OBO pool. `asUser(req)` takes the caller's delegated token
+   * (x-forwarded-access-token) and opens a pg pool authenticated AS THAT
+   * USER — Postgres current_user becomes their identity, so Row-Level
+   * Security is the authorization layer for every user-scoped route below.
+   */
   const userDb = (req: Request): DbLike => ({
-    query: (t, v) => userDb(req).query(t, v),
+    query: async <T = any>(t: string, v?: unknown[]) => {
+      const r = await appkit.lakebase.asUser(req).query(t, v);
+      return { rows: r.rows as T[], rowCount: r.rowCount };
+    },
   });
   appkit.server.extend((app) => {
     /** Identity + staff flag (also surfaces the PG role name for OBO debugging). */

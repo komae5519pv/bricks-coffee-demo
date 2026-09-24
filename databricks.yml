@@ -83,7 +83,7 @@ targets:
       catalog: konomi_demo_catalog
       schema: cofee_shop
       warehouse_id: 348478745ad64b30   # Serverless Starter Warehouse
-      genie_space_id: ""               # Genie スペース作成後に記録して再デプロイ
+      genie_space_id: 01f1b7fc22dd131a98457d1273f90b8a   # DAIWT コーヒーショップ (Lakebase CDC デモ)
       postgres_project: projects/konomi-coffee-shop
       postgres_branch: projects/konomi-coffee-shop/branches/production
       postgres_database: projects/konomi-coffee-shop/branches/production/databases/databricks-postgres
