@@ -4,6 +4,7 @@ import { Coffee, Minus, Plus, Search, ShoppingCart, Sparkles, Trash2 } from 'luc
 import { api, fmtPrice, type MenuItem, type Store } from '../lib/api';
 import { BaristaChat } from '../components/BaristaChat';
 import { MenuImage } from '../components/MenuImage';
+import { groupByItemKey, defaultSku, type ProductGroup } from '../lib/menu-group';
 
 interface CartLine {
   sku: string;
@@ -16,35 +17,13 @@ interface CartLine {
 
 const STORE_KEY = 'daiwt-coffee-store';
 
-const SIZE_ORDER = ['S', 'M', 'L', 'N/A'];
-
-interface ProductGroup {
-  item_key: string;
-  sizes: MenuItem[];
-}
-
-/** Group SKU-level rows into one card per product (item_key), sizes sorted. */
-function groupByItemKey(menu: MenuItem[]): ProductGroup[] {
-  const map = new Map<string, MenuItem[]>();
-  for (const item of menu) {
-    const arr = map.get(item.item_key) ?? [];
-    arr.push(item);
-    map.set(item.item_key, arr);
-  }
-  return [...map.entries()].map(([item_key, sizes]) => ({
-    item_key,
-    sizes: sizes.sort((a, b) => SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size)),
-  }));
-}
-
 /**
  * One product per card. Sizes are chips inside the card (カテゴリチップと
  * 同じデザイン言語); the price follows the selected size and 追加 puts that
  * size's SKU into the cart (cart stays SKU-based, unchanged).
  */
 function ProductCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: MenuItem) => void }) {
-  const defaultSku = (group.sizes.find((s) => s.size === 'M') ?? group.sizes[0]).sku;
-  const [sku, setSku] = useState(defaultSku);
+  const [sku, setSku] = useState(() => defaultSku(group));
   const current = group.sizes.find((s) => s.sku === sku) ?? group.sizes[0];
   return (
     <Card className="flex flex-col overflow-hidden">
@@ -285,7 +264,7 @@ export function OrderPage() {
 
         <div>
           <h3 className="text-sm font-medium mb-2">AI バリスタに相談</h3>
-          <BaristaChat storeId={storeId || null} />
+          <BaristaChat storeId={storeId || null} onAddToCart={addToCart} />
         </div>
       </div>
     </div>

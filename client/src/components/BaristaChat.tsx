@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import {
   type AgentChatEvent,
   Button,
@@ -7,13 +8,17 @@ import {
   Input,
   useAgentChat,
 } from '@databricks/appkit-ui/react';
-import { Check, ShieldQuestion, X } from 'lucide-react';
+import { Check, Plus, ShieldQuestion, X } from 'lucide-react';
+import { fmtPrice, type MenuItem } from '../lib/api';
+import { defaultSku, groupByItemKey, type ProductGroup } from '../lib/menu-group';
+import { MenuImage } from './MenuImage';
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant' | 'tool';
+  role: 'user' | 'assistant' | 'tool' | 'tool-products';
   content: string;
   toolName?: string;
+  groups?: ProductGroup[];
 }
 
 interface PendingApproval {
@@ -23,24 +28,90 @@ interface PendingApproval {
   args: string;
 }
 
+/** Tools whose JSON result should render as product cards. */
+const PRODUCT_TOOLS = new Set(['search_menu', 'get_item_details']);
+
+/** Minimal chat-toned Markdown (no raw HTML — react-markdown default = XSS-safe). */
+const mdComponents = {
+  h1: (p: object) => <h3 className="font-semibold text-sm mt-2 mb-1" {...p} />,
+  h2: (p: object) => <h3 className="font-semibold text-sm mt-2 mb-1" {...p} />,
+  h3: (p: object) => <h4 className="font-semibold text-sm mt-2 mb-1" {...p} />,
+  h4: (p: object) => <h4 className="font-semibold text-sm mt-1 mb-0.5" {...p} />,
+  p: (p: object) => <p className="my-1" {...p} />,
+  strong: (p: object) => <strong className="font-semibold" {...p} />,
+  ul: (p: object) => <ul className="list-disc ml-4 my-1" {...p} />,
+  ol: (p: object) => <ol className="list-decimal ml-4 my-1" {...p} />,
+  li: (p: object) => <li className="my-0.5" {...p} />,
+  a: (p: object) => <a className="text-primary underline" target="_blank" rel="noreferrer" {...p} />,
+  code: (p: object) => <code className="font-mono text-xs bg-muted px-1 rounded" {...p} />,
+  table: (p: object) => <table className="text-xs border-collapse my-1" {...p} />,
+  th: (p: object) => <th className="border px-2 py-1 bg-muted/50 text-left" {...p} />,
+  td: (p: object) => <td className="border px-2 py-1" {...p} />,
+};
+
+/** Compact product card inside the chat (matches the order tab's design language). */
+function ProductMiniCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: MenuItem) => void }) {
+  const [sku, setSku] = useState(() => defaultSku(group));
+  const current = group.sizes.find((s) => s.sku === sku) ?? group.sizes[0];
+  return (
+    <div className="rounded-md border bg-background overflow-hidden">
+      <div className="flex gap-3 p-3">
+        <MenuImage item={current} width={200} className="w-20 shrink-0" imgClassName="h-16" creditVariant="inline" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium truncate">{current.item_name}</div>
+          <div className="text-xs text-muted-foreground">{current.category}</div>
+          <div className="text-sm font-semibold mt-0.5">{fmtPrice(current.price, current.currency)}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 px-3 pb-3">
+        {group.sizes.length > 1 &&
+          group.sizes.map((s) => (
+            <Button
+              key={s.sku}
+              size="sm"
+              variant={s.sku === sku ? 'default' : 'outline'}
+              className="h-6 px-2 text-xs"
+              onClick={() => setSku(s.sku)}
+            >
+              {s.size}
+            </Button>
+          ))}
+        <Button size="sm" className="ml-auto h-7" onClick={() => onAdd(current)}>
+          <Plus className="h-3.5 w-3.5 mr-1" /> 追加
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Chat surface for the on-app barista agent. Mutating tool calls (placing
- * an order, changing a status) pause on the agents plugin's approval gate;
- * this renders the pending action and lets the user approve or deny it.
+ * an order, changing a status) pause on the agents plugin's approval gate.
+ * Assistant text renders as Markdown; search_menu/get_item_details tool
+ * results render as actionable product cards (structured data, not parsing).
  */
-export function BaristaChat({ storeId }: { storeId: string | null }) {
+export function BaristaChat({
+  storeId,
+  onAddToCart,
+}: {
+  storeId: string | null;
+  onAddToCart?: (item: MenuItem) => void;
+}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [pendingAssistantId, setPendingAssistantId] = useState<string | null>(null);
   const [approval, setApproval] = useState<PendingApproval | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const storeRef = useRef(storeId);
+  const toolNameByCallId = useRef(new Map<string, string>());
+
   useEffect(() => {
     storeRef.current = storeId;
   }, [storeId]);
 
   const handleEvent = (event: AgentChatEvent) => {
     if (event.type === 'response.output_item.added' && event.item?.type === 'function_call' && event.item.name) {
+      if (event.item.call_id) toolNameByCallId.current.set(event.item.call_id, event.item.name);
       setMessages((prev) => [
         ...prev,
         {
@@ -50,6 +121,29 @@ export function BaristaChat({ storeId }: { storeId: string | null }) {
           content: event.item?.arguments ?? '',
         },
       ]);
+    }
+    if (event.type === 'response.output_item.added' && event.item?.type === 'function_call_output') {
+      const toolName = event.item.call_id ? toolNameByCallId.current.get(event.item.call_id) : undefined;
+      if (toolName && PRODUCT_TOOLS.has(toolName) && event.item.output) {
+        try {
+          const rows = JSON.parse(event.item.output) as MenuItem | MenuItem[];
+          const items = Array.isArray(rows) ? rows : [rows];
+          const valid = items.filter((r) => r && typeof r.sku === 'string');
+          if (valid.length > 0) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `p-${Date.now()}-${Math.random()}`,
+                role: 'tool-products',
+                content: '',
+                groups: groupByItemKey(valid),
+              },
+            ]);
+          }
+        } catch {
+          // not JSON — fall through silently; the text answer still shows
+        }
+      }
     }
     if (event.type === 'appkit.approval_pending' && event.approval_id && event.stream_id) {
       setApproval({
@@ -127,10 +221,35 @@ export function BaristaChat({ storeId }: { storeId: string | null }) {
               </div>
             );
           }
+          if (m.role === 'tool-products' && m.groups) {
+            return (
+              <div key={m.id} className="space-y-2">
+                {m.groups.map((g) => (
+                  <ProductMiniCard
+                    key={g.item_key}
+                    group={g}
+                    onAdd={(item) => onAddToCart?.(item)}
+                  />
+                ))}
+              </div>
+            );
+          }
           return (
             <div key={m.id} className={`p-3 rounded-md ${m.role === 'user' ? 'bg-primary/10 ml-12' : 'bg-muted mr-12'}`}>
               <div className="text-xs text-muted-foreground mb-1">{m.role === 'user' ? 'あなた' : 'バリスタ'}</div>
-              <div className="whitespace-pre-wrap text-sm">{m.content || (isStreaming ? '…' : '')}</div>
+              {m.role === 'assistant' ? (
+                <div className="text-sm">
+                  {m.content ? (
+                    <ReactMarkdown components={mdComponents}>{m.content}</ReactMarkdown>
+                  ) : isStreaming ? (
+                    '…'
+                  ) : (
+                    ''
+                  )}
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap text-sm">{m.content}</div>
+              )}
             </div>
           );
         })}
