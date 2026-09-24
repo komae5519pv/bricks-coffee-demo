@@ -74,6 +74,22 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
 - 再取得: 自分の Unsplash Access Key を `~/.config/daiwt-coffee-shop/unsplash_access_key`
   に置いて `node tools/fetch_unsplash_images.mjs` を実行(キーは絶対にリポジトリに入れない)。
 
+## 栄養・健康軸 (カロリー・アレルゲン・代替乳)
+
+SKU 単位で栄養データを保持(実在チェーン相当の妥当な値・全店共通):
+
+- **栄養列**: calories_kcal / protein_g / fat_g(サイズ連動。例: エスプレッソ 10kcal、抹茶ラテM 200kcal、フラペ L ~400kcal 台)
+- **アレルゲン列**: contains_milk / contains_egg / contains_wheat / contains_nuts
+- **代替乳**: alt_milk_options(オーツ/アーモンド/豆乳に変更可能なミルク系ドリンク)
+- **タグ列**: scenes(breakfast/lunch/snack)、is_classic/is_new/is_seasonal、target_tags(傾向コード・UI には直接出さずエージェントが利用)
+
+使い方:
+
+- **注文ページ**: カードにサイズ連動の「¥750 / 210kcal」表示。折りたたみ「絞り込み」で kcal上限(200/300/400)・低脂質・高タンパク・シーン・季節限定/新商品/定番を絞り込める(クライアント側フィルタ)
+- **バリスタ**: search_menu に構造化フィルタ(max_calories/min_protein/max_fat/scene/tags/exclude_allergens/alt_milk)。「300kcal以内でタンパク質多め」等を正確に。recommend_set でシーン別セット提案(合計価格・合計カロリー付き・まとめてカート追加)。牛乳アレルギーには乳なし商品 + 代替乳変更可能ラテを区別して案内
+- **Genie**: 栄養・アレルゲン・人気(historical_orders 結合)の質問に対応(「最もカロリーが低いドリンクは?」→ 緑茶/アールグレイ 2kcal)
+- 埋め込みテキストにも栄養・アレルゲン文を含め、セマンティック検索が健康軸の問いに効く(「カロリー控えめ」等)
+
 ## ロール別 UI (お客さん表示 / スタッフ表示)
 
 OBO で「誰がアクセスしたか」を認識し、権限で見える画面が変わること自体を演示するため、
