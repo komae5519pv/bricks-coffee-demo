@@ -141,6 +141,18 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           size: qstr(req.query.size) || undefined,
           max_price: req.query.max_price ? Number(req.query.max_price) : undefined,
           limit: req.query.limit ? Number(req.query.limit) : 50,
+          max_calories: req.query.max_calories ? Number(req.query.max_calories) : undefined,
+          min_protein: req.query.min_protein ? Number(req.query.min_protein) : undefined,
+          max_fat: req.query.max_fat ? Number(req.query.max_fat) : undefined,
+          scene: qstr(req.query.scene) || undefined,
+          tags: qstr(req.query.tags) ? qstr(req.query.tags).split(',') : undefined,
+          exclude_allergens: qstr(req.query.exclude_allergens)
+            ? (qstr(req.query.exclude_allergens).split(',') as Array<'milk' | 'egg' | 'wheat' | 'nuts'>)
+            : undefined,
+          seasonal: qstr(req.query.seasonal) ? qstr(req.query.seasonal) === 'true' : undefined,
+          is_new: qstr(req.query.is_new) ? qstr(req.query.is_new) === 'true' : undefined,
+          is_classic: qstr(req.query.is_classic) ? qstr(req.query.is_classic) === 'true' : undefined,
+          alt_milk: qstr(req.query.alt_milk) ? qstr(req.query.alt_milk) === 'true' : undefined,
         });
         res.json(result);
       } catch (e) {

@@ -68,6 +68,22 @@ const INSTRUCTIONS = `
 - 価格はすべて円(¥)で表示すること(例: 「¥720」)。全店舗・全商品が円建て。
 - 商品の味や説明を聞かれたら get_item_details を使うこと。
 
+## 栄養・健康の質問(カロリー・タンパク質・脂質)
+- 「カロリー控えめ」「高タンパク」「低脂質」などの質問には、知識で答えず必ず search_menu の構造化フィルタ(max_calories / min_protein / max_fat)で正確に絞ること。
+- 回答には該当商品の kcal・タンパク質・脂質を明記すること(データに基づく根拠として)。
+
+## アレルギー対応(特に牛乳アレルギー)
+- get_my_preferences で嗜好を確認し、アレルゲンに関係する相談では search_menu の exclude_allergens を使うこと(例: 牛乳アレルギーなら ["milk"])。
+- 牛乳アレルギーのユーザーにラテ系を聞かれたら:
+  1. まず「乳成分なしのドリンク」(contains_milk=false になるもの=exclude_allergens ["milk"])を案内
+  2. 次に alt_milk=true(代替乳=オーツ/アーモンド/豆乳に変更可能)のラテを「代替乳に変更すれば飲めます」と案内
+  3. 乳成分を含む商品を勧める時は、代替乳変更を明示せずに乳入りのまま勧めないこと
+
+## シーン・セット提案
+- 「朝ごはん向け」「ランチに」「軽食に」は search_menu の scene フィルタ(breakfast/lunch/snack)。
+- 「セットを組んで」「おすすめの組み合わせ」には recommend_set を使うこと。回答では必ず合計価格・合計カロリーを明示し、チャットのカードからまとめてカートに追加できることを案内すること。
+- 「季節限定」「新商品」「定番」は seasonal/is_new/is_classic フィルタ、「人気の傾向」には tags フィルタを使うこと。
+
 ## 注文の受付(place_order)
 - 「注文したい」「〜をください」など明確な注文意思がある場合にのみ使うこと。
 - 実行前に必ず、店舗・商品名・サイズ・数量・合計金額をユーザーに提示して確認を取ること。
@@ -131,14 +147,27 @@ export const barista = createAgent({
 
       search_menu: tool({
         description:
-          '店舗のメニューを自然言語でセマンティック検索します(例:「甘い冷たいドリンク」「エスプレッソ系」「軽食」)。カテゴリ・サイズ・価格上限で絞り込みも可能。メニュー・おすすめ・価格の質問に必ず使ってください。',
+          '店舗のメニューを自然言語でセマンティック検索します(例:「甘い冷たいドリンク」「軽食」)。カテゴリ・サイズ・価格上限のほか、カロリー・タンパク質・脂質・アレルゲン・シーン(朝食/ランチ/軽食)・タグでの正確な構造化絞り込みが可能。メニュー・おすすめ・価格・栄養の質問に必ず使ってください。',
         schema: z.object({
           store_id: z.string().describe('店舗ID (例: TYO001)'),
-          query: z.string().describe('検索したい内容の自然言語表現'),
+          query: z.string().optional().describe('検索したい内容の自然言語表現(省略時は構造化フィルタのみで検索)'),
           category: z.string().optional().describe('カテゴリで絞り込み (例: エスプレッソ, ティー&抹茶)'),
           size: z.enum(['S', 'M', 'L', 'N/A']).optional().describe('サイズで絞り込み'),
-          max_price: z.number().optional().describe('価格の上限(店舗の通貨単位)'),
+          max_price: z.number().optional().describe('価格の上限(円)'),
           limit: z.number().optional().describe('最大件数(デフォルト8)'),
+          max_calories: z.number().optional().describe('カロリー上限(kcal)。「カロリー控えめ」は 200 程度'),
+          min_protein: z.number().optional().describe('タンパク質の下限(g)。「高タンパク」は 15 程度'),
+          max_fat: z.number().optional().describe('脂質の上限(g)。「低脂質」は 5 程度'),
+          scene: z.enum(['breakfast', 'lunch', 'snack']).optional().describe('シーンで絞り込み(朝食/ランチ/軽食)'),
+          tags: z.array(z.string()).optional().describe('タグで絞り込み (例: health, protein, sweet, business)'),
+          exclude_allergens: z
+            .array(z.enum(['milk', 'egg', 'wheat', 'nuts']))
+            .optional()
+            .describe('除外するアレルゲン。牛乳アレルギーなら ["milk"]'),
+          alt_milk: z.boolean().optional().describe('true で代替乳(オーツ/アーモンド/豆乳)に変更可能なドリンクのみ'),
+          seasonal: z.boolean().optional().describe('true で季節限定のみ'),
+          is_new: z.boolean().optional().describe('true で新商品のみ'),
+          is_classic: z.boolean().optional().describe('true で定番のみ'),
         }),
         annotations: { effect: 'read' },
         execute: async (args) => {
@@ -149,8 +178,74 @@ export const barista = createAgent({
             size: args.size,
             max_price: args.max_price,
             limit: args.limit ?? 8,
+            max_calories: args.max_calories,
+            min_protein: args.min_protein,
+            max_fat: args.max_fat,
+            scene: args.scene,
+            tags: args.tags,
+            exclude_allergens: args.exclude_allergens,
+            seasonal: args.seasonal,
+            is_new: args.is_new,
+            is_classic: args.is_classic,
+            alt_milk: args.alt_milk,
           });
           return result.rows;
+        },
+      }),
+
+      recommend_set: tool({
+        description:
+          'シーン(朝食 breakfast / ランチ lunch / 軽食 snack)や要望に応じて、ドリンク+フードのおすすめセットを1つ提案します。「朝ごはんにおすすめのセットは?」「カロリー控えめのセットを組んで」に使います。回答時は合計価格・合計カロリーを必ず明示してください。',
+        schema: z.object({
+          store_id: z.string(),
+          scene: z.enum(['breakfast', 'lunch', 'snack']).describe('セットのシーン'),
+          max_calories: z.number().optional().describe('セット合計カロリーの上限(kcal)'),
+          exclude_allergens: z
+            .array(z.enum(['milk', 'egg', 'wheat', 'nuts']))
+            .optional()
+            .describe('除外するアレルゲン。牛乳アレルギーなら ["milk"]'),
+          alt_milk: z.boolean().optional().describe('true で代替乳(オーツ/アーモンド/豆乳)変更可能なドリンクのみ'),
+        }),
+        annotations: { effect: 'read' },
+        execute: async ({ store_id, scene, max_calories, exclude_allergens, alt_milk }) => {
+          const DRINK_CATS = ['ドリップコーヒー', 'エスプレッソ', 'コールドブリュー&アイス', 'ティー&抹茶', '季節のおすすめ', 'フラッペ&ブレンデッド'];
+          const FOOD_CATS = ['ペイストリー', 'サンドイッチ&フード'];
+          const { rows } = await searchMenu(db, serving, {
+            store_id,
+            scene,
+            exclude_allergens,
+            alt_milk,
+            limit: 50,
+          });
+          const pick = (cats: string[]) => {
+            const byKey = new Map<string, (typeof rows)[number]>();
+            for (const r of rows) {
+              if (cats.includes(r.category) && r.size === 'M' && !byKey.has(r.item_key)) byKey.set(r.item_key, r);
+            }
+            return [...byKey.values()].sort(
+              (a, b) => Number(b.is_classic) - Number(a.is_classic) || (a.calories_kcal ?? 0) - (b.calories_kcal ?? 0),
+            );
+          };
+          const drinks = pick(DRINK_CATS);
+          const foods = pick(FOOD_CATS);
+          const drink = drinks[0];
+          if (!drink) return { error: 'シーンに合うドリンクが見つかりませんでした' };
+          let food = foods[0];
+          if (max_calories != null && drink.calories_kcal != null) {
+            const budget = max_calories - drink.calories_kcal;
+            food = foods.find((f) => (f.calories_kcal ?? 0) <= budget) ?? food;
+          }
+          if (!food) return { error: 'シーンに合うフードが見つかりませんでした' };
+          const items = [drink, food];
+          return {
+            type: 'recommend_set',
+            scene,
+            items,
+            total_price: items.reduce((s, i) => s + Number(i.price), 0),
+            total_kcal: items.reduce((s, i) => s + (i.calories_kcal ?? 0), 0),
+            currency: drink.currency,
+            note: `${scene === 'breakfast' ? '朝食' : scene === 'lunch' ? 'ランチ' : '軽食'}向けのセットです`,
+          };
         },
       }),
 

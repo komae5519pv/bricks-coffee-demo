@@ -57,17 +57,31 @@ def main() -> int:
     for i in range(0, len(items), CHUNK):
         batch = items[i : i + CHUNK]
         payload = json.dumps([
-            {'sku': m['sku'], 'item_name': m['item_name'], 'category': m['category'],
-             'description': m['description'], 'price': m['price']}
+            {k: m[k] for k in (
+                'sku', 'item_name', 'category', 'description', 'price',
+                'calories_kcal', 'protein_g', 'fat_g',
+                'contains_milk', 'contains_egg', 'contains_wheat', 'contains_nuts',
+                'alt_milk_options', 'scenes', 'is_classic', 'is_new', 'is_seasonal', 'target_tags',
+            )}
             for m in batch
         ], ensure_ascii=False)
         # psql has no parameter binding via -c; inline the JSON safely via dollar-quoting
         psql(
             "UPDATE cofee_shop.menu_items AS m "
             "SET item_name = v.item_name, category = v.category, description = v.description, "
-            "    price = v.price, currency = 'JPY', embedding = NULL, updated_at = now() "
+            "    price = v.price, currency = 'JPY', embedding = NULL, updated_at = now(), "
+            "    calories_kcal = v.calories_kcal, protein_g = v.protein_g, fat_g = v.fat_g, "
+            "    contains_milk = v.contains_milk, contains_egg = v.contains_egg, "
+            "    contains_wheat = v.contains_wheat, contains_nuts = v.contains_nuts, "
+            "    alt_milk_options = v.alt_milk_options, scenes = v.scenes, "
+            "    is_classic = v.is_classic, is_new = v.is_new, is_seasonal = v.is_seasonal, "
+            "    target_tags = v.target_tags "
             "FROM jsonb_to_recordset($payload$" + payload.replace('$payload$', '') + "$payload$::jsonb) "
-            "AS v(sku text, item_name text, category text, description text, price numeric) "
+            "AS v(sku text, item_name text, category text, description text, price numeric, "
+            "     calories_kcal int, protein_g numeric, fat_g numeric, "
+            "     contains_milk boolean, contains_egg boolean, contains_wheat boolean, contains_nuts boolean, "
+            "     alt_milk_options text, scenes text, "
+            "     is_classic boolean, is_new boolean, is_seasonal boolean, target_tags text) "
             "WHERE m.sku = v.sku",
             host, token, args.user,
         )

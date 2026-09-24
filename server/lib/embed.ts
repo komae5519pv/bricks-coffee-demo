@@ -48,11 +48,40 @@ export function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.join(',')}]`;
 }
 
-/** Text used to embed a menu item (name + category + description). */
+/**
+ * Text used to embed a menu item: name + category + description, plus a
+ * generated nutrition/allergen/scene sentence so semantic search can answer
+ * health-oriented queries (「カロリー控えめ」「高タンパク」「乳成分なし」).
+ */
 export function menuEmbeddingText(item: {
   item_name: string;
   category: string;
   description: string;
+  calories_kcal?: number | null;
+  protein_g?: string | null;
+  fat_g?: string | null;
+  contains_milk?: boolean | null;
+  alt_milk_options?: string | null;
+  scenes?: string | null;
+  is_seasonal?: boolean | null;
+  is_new?: boolean | null;
+  is_classic?: boolean | null;
 }): string {
-  return `${item.item_name} / ${item.category} / ${item.description}`.slice(0, 2000);
+  const parts = [`${item.item_name} / ${item.category} / ${item.description}`];
+  const facts: string[] = [];
+  if (item.calories_kcal != null) facts.push(`${item.calories_kcal}kcal`);
+  if (item.protein_g != null) facts.push(`タンパク質${item.protein_g}g`);
+  if (item.fat_g != null) facts.push(`脂質${item.fat_g}g`);
+  if (item.contains_milk === true) {
+    facts.push('乳成分あり');
+    if (item.alt_milk_options) facts.push(`代替乳に変更可(${item.alt_milk_options})`);
+  } else if (item.contains_milk === false) {
+    facts.push('乳成分なし');
+  }
+  if (item.scenes) facts.push(`シーン: ${item.scenes.split(',').join('・')}`);
+  if (item.is_seasonal) facts.push('季節限定');
+  if (item.is_new) facts.push('新商品');
+  if (item.is_classic) facts.push('定番');
+  if (facts.length > 0) parts.push(`[${facts.join(' / ')}]`);
+  return parts.join(' ').slice(0, 2000);
 }

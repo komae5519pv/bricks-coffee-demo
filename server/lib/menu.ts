@@ -35,9 +35,24 @@ export interface MenuRow {
   image_photographer?: string | null;
   image_photographer_url?: string | null;
   image_unsplash_url?: string | null;
+  calories_kcal?: number | null;
+  protein_g?: string | null;
+  fat_g?: string | null;
+  contains_milk?: boolean;
+  contains_egg?: boolean;
+  contains_wheat?: boolean;
+  contains_nuts?: boolean;
+  alt_milk_options?: string;
+  scenes?: string;
+  is_classic?: boolean;
+  is_new?: boolean;
+  is_seasonal?: boolean;
+  target_tags?: string;
 }
 
 const IMAGE_COLS = ', image_url, image_photographer, image_photographer_url, image_unsplash_url';
+const NUTRITION_COLS =
+  ', calories_kcal, protein_g::text, fat_g::text, contains_milk, contains_egg, contains_wheat, contains_nuts, alt_milk_options, scenes, is_classic, is_new, is_seasonal, target_tags';
 
 export interface MenuSearchFilters {
   store_id: string;
@@ -47,6 +62,16 @@ export interface MenuSearchFilters {
   max_price?: number;
   limit?: number;
   activeOnly?: boolean;
+  max_calories?: number;
+  min_protein?: number;
+  max_fat?: number;
+  scene?: string;
+  tags?: string[];
+  exclude_allergens?: Array<'milk' | 'egg' | 'wheat' | 'nuts'>;
+  seasonal?: boolean;
+  is_new?: boolean;
+  is_classic?: boolean;
+  alt_milk?: boolean;
 }
 
 const FILTER_SQL = `
@@ -54,6 +79,39 @@ const FILTER_SQL = `
   AND ($4::text IS NULL OR size = $4)
   AND ($5::numeric IS NULL OR price <= $5)
 `;
+
+/** Structured nutrition/allergen/scene filters (exact SQL, appended as $7..$16). */
+const HEALTH_SQL = `
+  AND ($7::int IS NULL OR calories_kcal <= $7)
+  AND ($8::numeric IS NULL OR protein_g >= $8)
+  AND ($9::numeric IS NULL OR fat_g <= $9)
+  AND ($10::text IS NULL OR scenes ILIKE '%' || $10 || '%')
+  AND ($11::text[] IS NULL OR EXISTS (SELECT 1 FROM unnest($11) AS t WHERE target_tags ILIKE '%' || t || '%'))
+  AND ($12::text[] IS NULL OR NOT (
+        ('milk'  = ANY($12) AND contains_milk) OR
+        ('egg'   = ANY($12) AND contains_egg) OR
+        ('wheat' = ANY($12) AND contains_wheat) OR
+        ('nuts'  = ANY($12) AND contains_nuts)))
+  AND ($13::boolean IS NULL OR is_seasonal = $13)
+  AND ($14::boolean IS NULL OR is_new = $14)
+  AND ($15::boolean IS NULL OR is_classic = $15)
+  AND ($16::boolean IS NULL OR (alt_milk_options <> '') = $16)
+`;
+
+function healthParams(f: MenuSearchFilters): unknown[] {
+  return [
+    f.max_calories ?? null,
+    f.min_protein ?? null,
+    f.max_fat ?? null,
+    f.scene ?? null,
+    f.tags ?? null,
+    f.exclude_allergens ?? null,
+    f.seasonal ?? null,
+    f.is_new ?? null,
+    f.is_classic ?? null,
+    f.alt_milk ?? null,
+  ];
+}
 
 /**
  * Semantic menu search. Falls back to ILIKE when the embedding endpoint is
@@ -71,12 +129,12 @@ export async function searchMenu(
       const [vec] = await embedTexts(serving, [f.query]);
       const { rows } = await db.query<MenuRow>(
         `SELECT sku, store_id, item_key, item_name, category, size, price::text,
-                currency, description, (embedding <=> $1::vector) AS distance${IMAGE_COLS}
+                currency, description, (embedding <=> $1::vector) AS distance${IMAGE_COLS}${NUTRITION_COLS}
          FROM cofee_shop.menu_items
-         WHERE store_id = $2 ${activeCond} AND embedding IS NOT NULL ${FILTER_SQL}
+         WHERE store_id = $2 ${activeCond} AND embedding IS NOT NULL ${FILTER_SQL} ${HEALTH_SQL}
          ORDER BY embedding <=> $1::vector
          LIMIT $6`,
-        [toVectorLiteral(vec), f.store_id, f.category ?? null, f.size ?? null, f.max_price ?? null, limit],
+        [toVectorLiteral(vec), f.store_id, f.category ?? null, f.size ?? null, f.max_price ?? null, limit, ...healthParams(f)],
       );
       return { rows, mode: 'semantic' };
     } catch (e) {
@@ -86,13 +144,13 @@ export async function searchMenu(
   const pattern = f.query ? `%${f.query}%` : '%';
   const { rows } = await db.query<MenuRow>(
     `SELECT sku, store_id, item_key, item_name, category, size, price::text,
-            currency, description${IMAGE_COLS}
+            currency, description${IMAGE_COLS}${NUTRITION_COLS}
      FROM cofee_shop.menu_items
      WHERE store_id = $2 ${activeCond}
-       AND (item_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1) ${FILTER_SQL}
+       AND (item_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1) ${FILTER_SQL} ${HEALTH_SQL}
      ORDER BY category, item_name, size
      LIMIT $6`,
-    [pattern, f.store_id, f.category ?? null, f.size ?? null, f.max_price ?? null, limit],
+    [pattern, f.store_id, f.category ?? null, f.size ?? null, f.max_price ?? null, limit, ...healthParams(f)],
   );
   return { rows, mode: 'fallback' };
 }

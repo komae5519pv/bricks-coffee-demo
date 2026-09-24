@@ -47,6 +47,20 @@ CREATE TABLE IF NOT EXISTS cofee_shop.menu_items (
   image_photographer     TEXT,
   image_photographer_url TEXT,
   image_unsplash_url     TEXT,
+  -- Nutrition / allergen / tag axes (per SKU; all stores share values)
+  calories_kcal   INTEGER,
+  protein_g       NUMERIC(4,1),
+  fat_g           NUMERIC(4,1),
+  contains_milk   BOOLEAN NOT NULL DEFAULT false,
+  contains_egg    BOOLEAN NOT NULL DEFAULT false,
+  contains_wheat  BOOLEAN NOT NULL DEFAULT false,
+  contains_nuts   BOOLEAN NOT NULL DEFAULT false,
+  alt_milk_options TEXT NOT NULL DEFAULT '',   -- comma-joined (e.g. 'oat,almond,soy') or ''
+  is_seasonal     BOOLEAN NOT NULL DEFAULT false,
+  is_new          BOOLEAN NOT NULL DEFAULT false,
+  is_classic      BOOLEAN NOT NULL DEFAULT false,
+  scenes          TEXT NOT NULL DEFAULT '',     -- comma-joined: breakfast/lunch/snack
+  target_tags     TEXT NOT NULL DEFAULT '',     -- neutral coded tags for the agent
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -290,8 +304,24 @@ async function seedIfEmpty(db: BootstrapDb): Promise<void> {
 async function backfillEmbeddings(db: BootstrapDb, serving: EmbeddingsInvoker): Promise<void> {
   const batchSize = 32;
   for (;;) {
-    const { rows } = await db.query<{ sku: string; item_name: string; category: string; description: string }>(
-      'SELECT sku, item_name, category, description FROM cofee_shop.menu_items WHERE embedding IS NULL LIMIT $1',
+    const { rows } = await db.query<{
+      sku: string;
+      item_name: string;
+      category: string;
+      description: string;
+      calories_kcal: number | null;
+      protein_g: string | null;
+      fat_g: string | null;
+      contains_milk: boolean;
+      alt_milk_options: string;
+      scenes: string;
+      is_seasonal: boolean;
+      is_new: boolean;
+      is_classic: boolean;
+    }>(
+      `SELECT sku, item_name, category, description, calories_kcal, protein_g::text, fat_g::text,
+              contains_milk, alt_milk_options, scenes, is_seasonal, is_new, is_classic
+       FROM cofee_shop.menu_items WHERE embedding IS NULL LIMIT $1`,
       [batchSize],
     );
     if (rows.length === 0) return;
@@ -345,6 +375,19 @@ ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS image_photographer TEXT;
 ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS image_photographer_url TEXT;
 ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS image_unsplash_url TEXT;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS calories_kcal INTEGER;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS protein_g NUMERIC(4,1);
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS fat_g NUMERIC(4,1);
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS contains_milk BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS contains_egg BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS contains_wheat BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS contains_nuts BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS alt_milk_options TEXT NOT NULL DEFAULT '';
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS is_seasonal BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS is_new BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS is_classic BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS scenes TEXT NOT NULL DEFAULT '';
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS target_tags TEXT NOT NULL DEFAULT '';
 `;
 
 /** Run once at startup, before the server accepts requests. */
