@@ -1,9 +1,14 @@
 # DAIWT Coffee Shop (2026 rebuild)
 
-世界12か国のコーヒーチェーンを模した Databricks Apps デモ。
+日本のコーヒーチェーン(世界12か国展開)を模した Databricks Apps デモ。
+**メニュー・カテゴリはすべて日本語、価格はすべて円(整数)表示**。
 **注文は Lakebase (OLTP) に OBO + RLS で書き込まれ、CDC (Lakehouse Sync) で数秒で
 Unity Catalog の Delta テーブルに複製され、Genie がそれを分析・提案する** ——
 「運用DBと分析基盤の分断がない」世界を1本の流れで見せる。
+
+価格のルール: 旧現地通貨価格 x100 (A$8.50 → ¥850) の整数円。店舗による価格差は
+残る(東京 ¥800 / ロンドン ¥450 のハンドドリップ 等)。historical_orders は金額列を
+持たないため変換対象なし(売上は menu_items との sku 結合で算出)。
 
 - アプリ: https://daiwt-coffee-shop-7474646087200844.aws.databricksapps.com
 - Genie スペース: https://fevm-konomi-demo.cloud.databricks.com/genie/rooms/01f1b7fc22dd131a98457d1273f90b8a
@@ -54,12 +59,15 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
   サイズ調整は imgix パラメータ(`?w=400&q=80&auto=format&fit=crop`)。lazy loading 付き。
 - 各画像に `Photo by {撮影者} on Unsplash` のクレジットをカード隅に小さく表示
   (撮影者ページ・Unsplash への utm_source 付きリンク)。
-- 仕組み: `tools/fetch_unsplash_images.mjs` が**初回1回だけ** Unsplash API を叩き
-  (デモ枠 50 req/時 → 16 requests で完結)、カテゴリ別画像プール(8カテゴリ×5枚)を
-  `server/seed/menu_images.json` に保存。アプリは起動時にこの JSON から各 SKU に
-  FNV-1a ハッシュで確定的に画像を割り当て `menu_items` の4カラムに保存する
+- 仕組み: `tools/fetch_unsplash_images.mjs` が**初回1回だけ** Unsplash API を叩き、
+  **ユニーク商品48点それぞれに専用の英語クエリ**で画像を取得(デモ枠 50 req/時に収まる。
+  サイズ違いは同一商品=同一画像)。結果は `server/seed/menu_images.json` の
+  `products`(item_key→画像)に保存。カテゴリ別プール(8カテゴリ×5枚)はフォールバックとして
+  `pool` に保持(管理画面からの新規商品や、専用画像が取れなかった商品用)。
+  アプリは起動時にこの JSON から各 SKU に画像を確定的に割り当て `menu_items` の4カラムに保存する
   (image_url / image_photographer / image_photographer_url / image_unsplash_url)。
-  **アプリ実行時は API を叩かない**。管理画面からの新規メニューにもカテゴリプールから自動割当。
+  **アプリ実行時は API を叩かない**。クエリ→item_key の対応はスクリプト内の明示マップで管理
+  (商品名が日本語でもクエリは英語のまま)。
 - 再取得: 自分の Unsplash Access Key を `~/.config/daiwt-coffee-shop/unsplash_access_key`
   に置いて `node tools/fetch_unsplash_images.mjs` を実行(キーは絶対にリポジトリに入れない)。
 
