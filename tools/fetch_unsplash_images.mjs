@@ -7,7 +7,8 @@
  * attribution only, no image files — to server/seed/menu_images.json.
  * The app runtime never calls the API; it reads this JSON.
  *
- * Unsplash demo status = 50 req/hour, so the whole batch is ~32 requests.
+ * Unsplash demo status = 50 req/hour; the batch needs only 16 requests
+ * (8 categories, queries short-circuit once the pool of 5 is full).
  * Re-run only to refresh the pool (with your own key placed at the path):
  *
  *   node tools/fetch_unsplash_images.mjs
