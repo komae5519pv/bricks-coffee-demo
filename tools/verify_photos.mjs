@@ -78,6 +78,22 @@ if (await lChip.count()) {
 }
 console.log(JSON.stringify({ cards: cardNames.length, dupNames, priceM, priceL }));
 
+// --- nutrition: kcal display on cards + collapsible filter UI ---
+const kcalCards = await page.locator('.grid.gap-3 div.font-semibold', { hasText: 'kcal' }).count();
+await page.getByText('絞り込み').click();
+await page.getByRole('button', { name: '300', exact: true }).click();
+await page.waitForTimeout(800);
+const kcalFilter = await page.evaluate(() => {
+  const texts = [...document.querySelectorAll('.grid.gap-3 div.font-semibold')].map((e) => e.textContent ?? '');
+  const kcals = texts
+    .map((t) => Number((t.match(/(\d+)kcal/) ?? [0, '0'])[1]))
+    .filter((n) => n > 0);
+  return { shown: kcals.length, over300: kcals.filter((k) => k > 300).length };
+});
+console.log('nutrition:', JSON.stringify({ kcalCards, kcalFilter }));
+await page.getByRole('button', { name: '300', exact: true }).click(); // toggle back off
+await page.waitForTimeout(500);
+
 // --- brand + role-based navigation ---
 const brand = await page.getByRole('heading', { name: 'BRICKS COFFEE' }).count();
 const navCount = async () => page.locator('header nav a').count();
@@ -122,6 +138,9 @@ if (customerNav !== 2) failures.push(`customer preview nav should be 2 items, go
 if (staffNavAfter !== 6) failures.push(`nav after switching back should be 6 items, got ${staffNavAfter}`);
 if (dupNames.length > 0) failures.push(`duplicate product cards: ${dupNames.join(', ')}`);
 if (priceM === priceL) failures.push(`size chip should change the displayed price (M: ${priceM}, L: ${priceL})`);
+if (kcalCards === 0) failures.push('no kcal shown on product cards');
+if (kcalFilter.shown === 0) failures.push('300kcal filter hid all cards');
+if (kcalFilter.over300 > 0) failures.push(`300kcal filter inaccurate: ${kcalFilter.over300} cards over cap`);
 if (failures.length) {
   console.error('VERIFICATION FAILED:', failures.join(' / '));
   process.exit(1);
