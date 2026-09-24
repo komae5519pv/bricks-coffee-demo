@@ -483,7 +483,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
       const d = parsed.data;
       const sku = `${d.store_id}-${d.item_key}-${d.size.replace('/', '')}`;
       // New items get an image from their category pool (deterministic).
-      const img = pickImage(d.category, sku);
+      const img = pickImage(d.category, sku, d.item_key);
       try {
         const { rows, rowCount } = await userDb(req).query(
           `INSERT INTO cofee_shop.menu_items
@@ -524,10 +524,15 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           sets.push(`${f} = $${values.length}`);
         }
       }
-      // Category change => re-assign the photo from the NEW category's pool,
-      // so the card never shows an image that contradicts its category.
+      // Category change => re-resolve the photo. Products with a dedicated
+      // image keep it (the photo matches the product, not the category);
+      // pool-backed images follow the NEW category's pool.
       if (d.category !== undefined) {
-        const img = pickImage(d.category, String(req.params.sku));
+        const { rows: keyRows } = await userDb(req).query<{ item_key: string }>(
+          'SELECT item_key FROM cofee_shop.menu_items WHERE sku = $1',
+          [req.params.sku],
+        );
+        const img = pickImage(d.category, String(req.params.sku), keyRows[0]?.item_key);
         for (const [col, val] of [
           ['image_url', img?.url ?? null],
           ['image_photographer', img?.photographer ?? null],

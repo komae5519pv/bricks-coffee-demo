@@ -1,17 +1,24 @@
 #!/usr/bin/env node
 /**
- * One-shot batch: build the per-category Unsplash image pool.
+ * One-shot batch: build the product-level Unsplash image map.
  *
  * Reads the access key from ~/.config/daiwt-coffee-shop/unsplash_access_key
  * (never from the repo, never printed) and writes results — hotlink URLs +
- * attribution only, no image files — to server/seed/menu_images.json.
+ * attribution only, no image files — to server/seed/menu_images.json:
+ *
+ *   products: { <item_key>: image }   — one dedicated English query per
+ *                                       unique product (48 = within the
+ *                                       50 req/hour demo limit)
+ *   pool:     { <ja_category>: [image] } — category fallback pool, kept
+ *                                       from the previous batch (re-keyed
+ *                                       to the Japanese category names,
+ *                                       no API calls)
+ *
  * The app runtime never calls the API; it reads this JSON.
+ * Re-run only to refresh images (with your own key placed at the path):
  *
- * Unsplash demo status = 50 req/hour; the batch needs only 16 requests
- * (8 categories, queries short-circuit once the pool of 5 is full).
- * Re-run only to refresh the pool (with your own key placed at the path):
- *
- *   node tools/fetch_unsplash_images.mjs
+ *   node tools/fetch_unsplash_images.mjs           # top-up only missing products
+ *   node tools/fetch_unsplash_images.mjs --force   # re-fetch all 48
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -21,26 +28,78 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const KEY_PATH = join(homedir(), '.config', 'daiwt-coffee-shop', 'unsplash_access_key');
 const OUT_PATH = join(ROOT, 'server', 'seed', 'menu_images.json');
-const POOL_SIZE = 5; // images kept per category (40 total)
 const UTM = 'utm_source=daiwt_coffee_shop&utm_medium=referral';
 
-// English queries per menu category — broad enough to return appetizing,
-// coffee-shop-looking photos; ~4 queries x ~2 picks each >= POOL_SIZE.
-const QUERIES = {
-  'Brewed Coffee': ['drip coffee pour over', 'black coffee cup', 'filter coffee cafe', 'coffee pot glass'],
-  Espresso: ['espresso shot', 'cappuccino latte art', 'espresso machine coffee', 'flat white coffee'],
-  'Cold Brew & Iced': ['iced coffee glass', 'cold brew coffee', 'iced latte', 'iced americano'],
-  'Tea & Matcha': ['matcha green tea', 'green tea cup', 'matcha latte', 'japanese tea ceremony'],
-  Seasonal: ['pumpkin spice latte', 'autumn coffee drink', 'winter latte', 'sakura latte'],
-  'Frappé & Blended': ['frappuccino whipped cream', 'blended coffee drink', 'coffee milkshake', 'iced blended drink'],
-  Pastry: ['croissant coffee', 'cafe pastry', 'danish pastry bakery', 'cannele pastry'],
-  'Sandwich & Food': ['cafe sandwich', 'sandwich lunch plate', 'bagel sandwich cafe', 'toast sandwich coffee'],
+// One dedicated English query per unique product (item_key). Kept in English
+// on purpose even though item names are now Japanese — this map is the
+// explicit, reviewed binding between a product and its photo search.
+const PRODUCT_QUERIES = {
+  DRIP: 'drip coffee filter brew',
+  POUR: 'pour over coffee brewing',
+  CAFE: 'cafe au lait coffee milk',
+  AMER: 'americano black coffee cup',
+  ESPR: 'espresso shot crema',
+  DOPP: 'espresso macchiato',
+  CAPU: 'cappuccino latte art',
+  LATT: 'caffe latte',
+  FLAT: 'flat white coffee',
+  MOCH: 'mocha coffee chocolate whipped cream',
+  CARM: 'caramel macchiato',
+  OATL: 'oat milk latte',
+  HONL: 'honey latte coffee',
+  ICOF: 'iced coffee glass',
+  COLD: 'cold brew coffee bottle',
+  CLDB: 'espresso tonic orange coffee',
+  ILAT: 'iced caffe latte',
+  IMOC: 'iced mocha coffee',
+  NITR: 'nitro cold brew coffee',
+  GTEN: 'japanese green tea sencha',
+  MTCH: 'matcha latte',
+  IMTC: 'iced matcha latte',
+  HOJI: 'hojicha tea japan',
+  EARL: 'earl grey tea cup',
+  CHAI: 'chai latte spices',
+  YUZU: 'yuzu citrus tea',
+  SAKU: 'pink sakura drink',
+  PUMP: 'pumpkin spice latte',
+  GING: 'gingerbread latte christmas',
+  MANG: 'mango passionfruit smoothie',
+  FRAC: 'coffee frappuccino whipped cream',
+  FRAM: 'matcha frappuccino',
+  FRAC2: 'caramel frappuccino',
+  FRAS: 'strawberry frappuccino',
+  CROI: 'butter croissant',
+  PAIN: 'pain au chocolat',
+  SCON: 'blueberry scone',
+  MUFF: 'banana walnut muffin',
+  CANN: 'canele french pastry',
+  CHEE: 'basque burnt cheesecake',
+  SALM: 'smoked salmon bagel',
+  HAMC: 'ham cheese sandwich grilled',
+  EGGS: 'egg salad sandwich japanese',
+  TUNA: 'tuna melt sandwich',
+  TERI: 'teriyaki chicken sandwich',
+  VEGE: 'grilled vegetable focaccia sandwich',
+  SALAD: 'chicken caesar salad',
+  ACAI: 'acai bowl granola fruit',
+};
+
+// Category pool keys moved to Japanese categories; images unchanged.
+const POOL_REKEY = {
+  'Brewed Coffee': 'ドリップコーヒー',
+  Espresso: 'エスプレッソ',
+  'Cold Brew & Iced': 'コールドブリュー&アイス',
+  'Tea & Matcha': 'ティー&抹茶',
+  Seasonal: '季節のおすすめ',
+  'Frappé & Blended': 'フラッペ&ブレンデッド',
+  Pastry: 'ペイストリー',
+  'Sandwich & Food': 'サンドイッチ&フード',
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function search(key, query) {
-  const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=4&orientation=landscape&content_filter=high`;
+async function searchOne(key, query) {
+  const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape&content_filter=high`;
   const res = await fetch(url, { headers: { Authorization: `Client-ID ${key}` } });
   if (!res.ok) {
     const body = await res.text();
@@ -48,7 +107,7 @@ async function search(key, query) {
   }
   const remaining = res.headers.get('x-ratelimit-remaining');
   const data = await res.json();
-  return { results: data.results ?? [], remaining };
+  return { first: (data.results ?? [])[0], remaining };
 }
 
 function key() {
@@ -69,45 +128,55 @@ function key() {
 
 async function main() {
   const accessKey = key();
-  const pool = {};
-  const seen = new Set();
-  let requests = 0;
 
-  for (const [category, queries] of Object.entries(QUERIES)) {
-    pool[category] = [];
-    for (const q of queries) {
-      if (pool[category].length >= POOL_SIZE) break;
-      const { results, remaining } = await search(accessKey, q);
-      requests++;
-      for (const r of results) {
-        if (pool[category].length >= POOL_SIZE) break;
-        if (seen.has(r.id)) continue;
-        seen.add(r.id);
-        pool[category].push({
-          url: r.urls.raw, // imgix base URL — UI appends ?w=...&auto=format&fit=crop
-          photographer: r.user.name,
-          photographer_url: `${r.user.links.html}?${UTM}`,
-          unsplash_url: `${r.links.html}?${UTM}`,
-          source_query: q,
-        });
-      }
-      console.log(`[${requests}] ${category} <- "${q}": pool=${pool[category].length}/${POOL_SIZE} (rate remaining: ${remaining})`);
-      await sleep(1100); // polite pacing; also keeps us well under 50/hour
+  // Category fallback pool: reuse existing images, just re-key (no API calls).
+  const existing = JSON.parse(readFileSync(OUT_PATH, 'utf8'));
+  const pool = {};
+  for (const [en, ja] of Object.entries(POOL_REKEY)) {
+    pool[ja] = existing.pool?.[en] ?? existing.pool?.[ja] ?? [];
+  }
+
+  // Product-level images: one request per unique product. Default mode is a
+  // top-up: products already present in the JSON are kept untouched, so a
+  // re-run after a partial batch only spends requests on what's missing.
+  const force = process.argv.includes('--force');
+  const products = force ? {} : { ...(existing.products ?? {}) };
+  const todo = Object.entries(PRODUCT_QUERIES).filter(([k]) => force || !products[k]);
+  if (todo.length === 0) {
+    console.log('all 48 products already have images — nothing to fetch (use --force to re-fetch)');
+  }
+  let requests = 0;
+  for (const [itemKey, q] of todo) {
+    const { first, remaining } = await searchOne(accessKey, q);
+    requests++;
+    if (!first) {
+      console.warn(`[${requests}] ${itemKey} <- "${q}": NO RESULT (category pool fallback will apply)`);
+      await sleep(1100);
+      continue;
     }
-    if (pool[category].length === 0) {
-      console.error(`no images found for ${category}`);
-      process.exit(1);
-    }
+    products[itemKey] = {
+      url: first.urls.raw,
+      photographer: first.user.name,
+      photographer_url: `${first.user.links.html}?${UTM}`,
+      unsplash_url: `${first.links.html}?${UTM}`,
+      source_query: q,
+    };
+    console.log(`[${requests}] ${itemKey} <- "${q}" OK (rate remaining: ${remaining})`);
+    await sleep(1100);
   }
 
   const out = {
     generated_at: new Date().toISOString(),
     attribution_note: 'Hotlink to images.unsplash.com only (no rehosting). Attribution required: Photo by {photographer} on Unsplash.',
+    products,
     pool,
   };
   writeFileSync(OUT_PATH, JSON.stringify(out, null, 2) + '\n');
-  const total = Object.values(pool).reduce((s, arr) => s + arr.length, 0);
-  console.log(`\nwrote ${OUT_PATH}: ${total} images across ${Object.keys(pool).length} categories (${requests} API requests)`);
+  console.log(`\nwrote ${OUT_PATH}: ${Object.keys(products).length} product images + ${Object.keys(pool).length} category pools (${requests} API requests)`);
+  if (Object.keys(products).length < Object.keys(PRODUCT_QUERIES).length) {
+    console.error('some products got no image — review warnings above');
+    process.exit(1);
+  }
 }
 
 await main();

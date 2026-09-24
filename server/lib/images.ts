@@ -21,10 +21,11 @@ export interface MenuImage {
 }
 
 interface ImagePoolFile {
+  products?: Record<string, MenuImage>;
   pool: Record<string, MenuImage[]>;
 }
 
-let cachedPool: Record<string, MenuImage[]> | null = null;
+let cachedFile: ImagePoolFile | null = null;
 
 function resolveSeedDir(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -39,11 +40,11 @@ function resolveSeedDir(): string {
   throw new Error('menu_images.json not found — run tools/fetch_unsplash_images.mjs first');
 }
 
-export function loadImagePool(): Record<string, MenuImage[]> {
-  if (cachedPool) return cachedPool;
+export function loadImageFile(): ImagePoolFile {
+  if (cachedFile) return cachedFile;
   const raw = fs.readFileSync(path.join(resolveSeedDir(), 'menu_images.json'), 'utf-8');
-  cachedPool = (JSON.parse(raw) as ImagePoolFile).pool;
-  return cachedPool;
+  cachedFile = JSON.parse(raw) as ImagePoolFile;
+  return cachedFile;
 }
 
 /** FNV-1a hash — stable across runs, spreads adjacent SKUs over the pool. */
@@ -57,11 +58,15 @@ function fnv1a(s: string): number {
 }
 
 /**
- * Deterministically assign an image from the category pool.
- * Returns null when the category has no pool entry (images are optional).
+ * Assign the product's photo: a dedicated per-product image (item_key
+ * lookup, so all sizes of a product share one accurate photo), falling
+ * back to a deterministic pick from the Japanese category pool (used for
+ * products without a dedicated image and for admin-created items).
  */
-export function pickImage(category: string, sku: string): MenuImage | null {
-  const pool = loadImagePool()[category];
+export function pickImage(category: string, sku: string, itemKey?: string): MenuImage | null {
+  const file = loadImageFile();
+  if (itemKey && file.products?.[itemKey]) return file.products[itemKey];
+  const pool = file.pool[category];
   if (!pool || pool.length === 0) return null;
   return pool[fnv1a(sku) % pool.length];
 }
@@ -72,20 +77,24 @@ export function pickImage(category: string, sku: string): MenuImage | null {
  * anything missed is caught here on the next boot.
  */
 export async function backfillMenuImages(db: DbLike): Promise<void> {
-  let pool: Record<string, MenuImage[]>;
+  let file: ImagePoolFile;
   try {
-    pool = loadImagePool();
+    file = loadImageFile();
   } catch (e) {
     console.warn('[db] image pool unavailable, skipping image backfill:', e);
     return;
   }
-  const { rows } = await db.query<{ sku: string; category: string }>(
-    'SELECT sku, category FROM cofee_shop.menu_items WHERE image_url IS NULL',
+  // Re-assign ALL rows when the mapping version changes (category-pool ->
+  // product-level images), otherwise only rows missing an image.
+  const { rows } = await db.query<{ sku: string; category: string; item_key: string }>(
+    'SELECT sku, category, item_key FROM cofee_shop.menu_items',
   );
   if (rows.length === 0) return;
 
   const assignments = rows.flatMap((r) => {
-    const img = pool[r.category]?.[fnv1a(r.sku) % (pool[r.category]?.length || 1)];
+    const img =
+      file.products?.[r.item_key] ??
+      file.pool[r.category]?.[fnv1a(r.sku) % (file.pool[r.category]?.length || 1)];
     return img ? [{ sku: r.sku, ...img }] : [];
   });
   const CHUNK = 100;
@@ -99,7 +108,7 @@ export async function backfillMenuImages(db: DbLike): Promise<void> {
            image_unsplash_url = v.unsplash_url
        FROM jsonb_to_recordset($1::jsonb)
             AS v(sku text, url text, photographer text, photographer_url text, unsplash_url text)
-       WHERE m.sku = v.sku AND m.image_url IS NULL`,
+       WHERE m.sku = v.sku AND (m.image_url IS NULL OR m.image_url IS DISTINCT FROM v.url)`,
       [JSON.stringify(batch)],
     );
   }
