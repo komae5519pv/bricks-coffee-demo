@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, CardContent, Input } from '@databricks/appkit-ui/react';
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
-import { api, fmtPrice, type Me, type MenuItem, type Store } from '../lib/api';
+import { api, fmtPrice, menuImageSrc, type Me, type MenuItem, type Store } from '../lib/api';
 
 const SIZES = ['S', 'M', 'L', 'N/A'] as const;
 
@@ -224,6 +224,7 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left">
               <tr>
+                <th className="p-2"></th>
                 <th className="p-2">SKU</th>
                 <th className="p-2">商品名</th>
                 <th className="p-2">カテゴリ</th>
@@ -236,6 +237,19 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
             <tbody>
               {items.map((item) => (
                 <tr key={item.sku} className="border-t hover:bg-muted/30">
+                  <td className="p-2">
+                    {menuImageSrc(item, 200) && (
+                      <div className="h-10 w-14 overflow-hidden rounded bg-muted">
+                        <img
+                          src={menuImageSrc(item, 200) ?? undefined}
+                          alt={item.item_name}
+                          title={item.image_photographer ? `Photo by ${item.image_photographer} on Unsplash` : undefined}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    )}
+                  </td>
                   <td className="p-2 font-mono text-xs">{item.sku}</td>
                   <td className="p-2">{item.item_name}</td>
                   <td className="p-2 text-muted-foreground">{item.category}</td>

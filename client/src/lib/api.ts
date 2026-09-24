@@ -28,6 +28,17 @@ export interface MenuItem {
   description: string;
   active?: boolean;
   distance?: number;
+  image_url?: string | null;
+  image_photographer?: string | null;
+  image_photographer_url?: string | null;
+  image_unsplash_url?: string | null;
+}
+
+/** imgix-sized hotlink for a stored Unsplash base URL. */
+export function menuImageSrc(item: MenuItem, width: number): string | null {
+  if (!item.image_url) return null;
+  const sep = item.image_url.includes('?') ? '&' : '?';
+  return `${item.image_url}${sep}w=${width}&q=80&auto=format&fit=crop`;
 }
 
 /** Input for menu create/update (price is a number on the wire; the server validates with zod). */

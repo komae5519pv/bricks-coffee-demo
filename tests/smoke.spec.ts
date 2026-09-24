@@ -24,6 +24,9 @@ test('home page loads with store selector and menu from Lakebase', async ({ page
   await expect(page.locator('select').first()).toBeVisible({ timeout: 30000 });
   // at least one menu item card with an "追加" button (data comes from Lakebase)
   await expect(page.getByRole('button', { name: /追加/ }).first()).toBeVisible({ timeout: 30000 });
+  // menu cards show Unsplash hotlink photos with attribution
+  await expect(page.locator('img[loading="lazy"]').first()).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText(/Photo by .+ on Unsplash/).first()).toBeVisible();
 });
 
 test('order flow: add to cart and place an order', async ({ page }) => {
