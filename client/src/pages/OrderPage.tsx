@@ -372,7 +372,7 @@ export function OrderPage() {
           keeps its natural height (internal scroll when long), the chat gets
           the remaining height with its own internal scroll. */}
       <div className="space-y-4 lg:sticky lg:top-[4.5rem] lg:self-start lg:flex lg:max-h-[calc(100vh-5.5rem)] lg:flex-col">
-        <Card className="lg:shrink-0">
+        <Card className="lg:shrink-0" data-cart>
           <CardContent className="p-4 space-y-3 lg:max-h-[45vh] lg:overflow-y-auto">
             <div className="flex items-center gap-2 font-medium">
               <ShoppingCart className="h-4 w-4" /> カート

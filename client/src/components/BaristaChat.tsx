@@ -175,7 +175,8 @@ export function BaristaChat({
     }
     if (event.type === 'response.output_item.added' && event.item?.type === 'function_call_output') {
       const toolName = event.item.call_id ? toolNameByCallId.current.get(event.item.call_id) : undefined;
-      if (toolName === 'recommend_set' && event.item.output) {
+      // Any tool output shaped like a set (recommend_set / reorder_last) renders as a SetCard.
+      if (event.item.output) {
         try {
           const parsed = JSON.parse(event.item.output) as RecommendSet;
           if (parsed?.type === 'recommend_set' && Array.isArray(parsed.items) && parsed.items.length > 0) {
