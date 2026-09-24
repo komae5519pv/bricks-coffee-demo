@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, CardContent, Input } from '@databricks/appkit-ui/react';
-import { Coffee, Minus, Plus, Search, ShoppingCart, Sparkles, Trash2 } from 'lucide-react';
-import { api, fmtPrice, type MenuItem, type Store } from '../lib/api';
+import { Coffee, Minus, Plus, Search, ShoppingCart, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
+import { api, fmtPrice, fmtPriceKcal, type MenuItem, type Store } from '../lib/api';
 import { BaristaChat } from '../components/BaristaChat';
 import { MenuImage } from '../components/MenuImage';
 import { groupByItemKey, defaultSku, type ProductGroup } from '../lib/menu-group';
@@ -34,7 +34,7 @@ function ProductCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: Menu
             <div className="font-medium text-sm">{current.item_name}</div>
             <div className="text-xs text-muted-foreground">{current.category}</div>
           </div>
-          <div className="font-semibold text-sm whitespace-nowrap">{fmtPrice(current.price, current.currency)}</div>
+          <div className="font-semibold text-sm whitespace-nowrap">{fmtPriceKcal(current)}</div>
         </div>
         <p className="text-xs text-muted-foreground line-clamp-2 flex-1">{current.description}</p>
         {group.sizes.length > 1 && (
@@ -107,7 +107,29 @@ export function OrderPage() {
   }, [loadMenu]);
 
   const store = stores.find((s) => s.store_id === storeId);
-  const groups = useMemo(() => groupByItemKey(menu), [menu]);
+
+  // 絞り込み UI (client-side over the loaded rows; the agent uses SQL filters)
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [maxKcal, setMaxKcal] = useState<number | null>(null);
+  const [lowFat, setLowFat] = useState(false);
+  const [highProtein, setHighProtein] = useState(false);
+  const [scene, setScene] = useState<'' | 'breakfast' | 'lunch' | 'snack'>('');
+  const [flag, setFlag] = useState<'' | 'seasonal' | 'new' | 'classic'>('');
+  const activeFilterCount =
+    (maxKcal != null ? 1 : 0) + (lowFat ? 1 : 0) + (highProtein ? 1 : 0) + (scene ? 1 : 0) + (flag ? 1 : 0);
+  const groups = useMemo(() => {
+    const filtered = menu.filter((m) => {
+      if (maxKcal != null && (m.calories_kcal ?? Infinity) > maxKcal) return false;
+      if (lowFat && Number(m.fat_g ?? Infinity) > 5) return false;
+      if (highProtein && Number(m.protein_g ?? 0) < 10) return false;
+      if (scene && !(m.scenes ?? '').includes(scene)) return false;
+      if (flag === 'seasonal' && !m.is_seasonal) return false;
+      if (flag === 'new' && !m.is_new) return false;
+      if (flag === 'classic' && !m.is_classic) return false;
+      return true;
+    });
+    return groupByItemKey(filtered);
+  }, [menu, maxKcal, lowFat, highProtein, scene, flag]);
 
   const addToCart = (item: MenuItem) => {
     setCart((prev) => {
@@ -192,7 +214,80 @@ export function OrderPage() {
               {c}
             </Button>
           ))}
+          <button
+            className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setFilterOpen((v) => !v)}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            絞り込み{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+          </button>
         </div>
+
+        {filterOpen && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              kcal上限
+              {[200, 300, 400].map((k) => (
+                <Button
+                  key={k}
+                  size="sm"
+                  variant={maxKcal === k ? 'default' : 'outline'}
+                  className="h-6 px-2 text-xs"
+                  onClick={() => setMaxKcal(maxKcal === k ? null : k)}
+                >
+                  {k}
+                </Button>
+              ))}
+            </span>
+            <span className="flex items-center gap-1">
+              <Button size="sm" variant={lowFat ? 'default' : 'outline'} className="h-6 px-2 text-xs" onClick={() => setLowFat((v) => !v)}>
+                低脂質
+              </Button>
+              <Button size="sm" variant={highProtein ? 'default' : 'outline'} className="h-6 px-2 text-xs" onClick={() => setHighProtein((v) => !v)}>
+                高タンパク
+              </Button>
+            </span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              シーン
+              {(
+                [
+                  ['breakfast', '朝食'],
+                  ['lunch', 'ランチ'],
+                  ['snack', '軽食'],
+                ] as const
+              ).map(([v, label]) => (
+                <Button
+                  key={v}
+                  size="sm"
+                  variant={scene === v ? 'default' : 'outline'}
+                  className="h-6 px-2 text-xs"
+                  onClick={() => setScene(scene === v ? '' : v)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </span>
+            <span className="flex items-center gap-1">
+              {(
+                [
+                  ['seasonal', '季節限定'],
+                  ['new', '新商品'],
+                  ['classic', '定番'],
+                ] as const
+              ).map(([v, label]) => (
+                <Button
+                  key={v}
+                  size="sm"
+                  variant={flag === v ? 'default' : 'outline'}
+                  className="h-6 px-2 text-xs"
+                  onClick={() => setFlag(flag === v ? '' : v)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </span>
+          </div>
+        )}
 
         {query && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

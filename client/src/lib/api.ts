@@ -32,6 +32,25 @@ export interface MenuItem {
   image_photographer?: string | null;
   image_photographer_url?: string | null;
   image_unsplash_url?: string | null;
+  calories_kcal?: number | null;
+  protein_g?: string | null;
+  fat_g?: string | null;
+  contains_milk?: boolean;
+  contains_egg?: boolean;
+  contains_wheat?: boolean;
+  contains_nuts?: boolean;
+  alt_milk_options?: string;
+  scenes?: string;
+  is_classic?: boolean;
+  is_new?: boolean;
+  is_seasonal?: boolean;
+  target_tags?: string;
+}
+
+/** '¥750 / 210kcal' style compact price+energy label (kcal omitted when unknown). */
+export function fmtPriceKcal(item: { price: string; currency: string; calories_kcal?: number | null }): string {
+  const base = fmtPrice(item.price, item.currency);
+  return item.calories_kcal != null ? `${base} / ${item.calories_kcal}kcal` : base;
 }
 
 /** imgix-sized hotlink for a stored Unsplash base URL. */

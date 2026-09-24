@@ -77,10 +77,21 @@ def main() -> int:
     run_sql(f"""
 CREATE OR REPLACE TABLE {FQ}.menu_items (
   sku STRING, store_id STRING, item_key STRING, item_name STRING, category STRING,
-  size STRING, price DECIMAL(10,2), currency STRING, description STRING, active BOOLEAN
+  size STRING, price DECIMAL(10,2), currency STRING, description STRING, active BOOLEAN,
+  calories_kcal INT, protein_g DECIMAL(4,1), fat_g DECIMAL(4,1),
+  contains_milk BOOLEAN, contains_egg BOOLEAN, contains_wheat BOOLEAN, contains_nuts BOOLEAN,
+  alt_milk_options STRING, scenes STRING,
+  is_classic BOOLEAN, is_new BOOLEAN, is_seasonal BOOLEAN, target_tags STRING
 )
 """, p)
     run_sql(f'DELETE FROM {FQ}.menu_items', p)
+
+    COLS = (
+        'sku', 'store_id', 'item_key', 'item_name', 'category', 'size', 'price', 'currency',
+        'description', 'active', 'calories_kcal', 'protein_g', 'fat_g',
+        'contains_milk', 'contains_egg', 'contains_wheat', 'contains_nuts',
+        'alt_milk_options', 'scenes', 'is_classic', 'is_new', 'is_seasonal', 'target_tags',
+    )
 
     def esc(v: object) -> str:
         if isinstance(v, bool):
@@ -92,15 +103,8 @@ CREATE OR REPLACE TABLE {FQ}.menu_items (
     batch = 100
     for i in range(0, len(seed), batch):
         rows = seed[i : i + batch]
-        values = ',\n'.join(
-            '(' + ', '.join(esc(m[k]) for k in
-                            ('sku', 'store_id', 'item_key', 'item_name', 'category', 'size', 'price', 'currency', 'description', 'active')) + ')'
-            for m in rows
-        )
-        run_sql(
-            f'INSERT INTO {FQ}.menu_items (sku, store_id, item_key, item_name, category, size, price, currency, description, active) VALUES\n{values}',
-            p,
-        )
+        values = ',\n'.join('(' + ', '.join(esc(m[k]) for k in COLS) + ')' for m in rows)
+        run_sql(f'INSERT INTO {FQ}.menu_items ({", ".join(COLS)}) VALUES\n{values}', p)
         print(f'  inserted {min(i + batch, len(seed))}/{len(seed)}')
 
     print('adding table comments...')
