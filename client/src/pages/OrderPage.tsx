@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, CardContent, Input } from '@databricks/appkit-ui/react';
-import { Coffee, Minus, Plus, Search, ShoppingCart, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
-import { api, fmtPrice, fmtPriceKcal, type MenuItem, type Store } from '../lib/api';
+import { Coffee, Minus, Plus, RotateCcw, Search, ShoppingCart, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
+import { api, fmtPrice, fmtPriceKcal, type MenuItem, type Order, type Store } from '../lib/api';
+import { computeFrequent } from '../lib/personalize';
 import { BaristaChat } from '../components/BaristaChat';
 import { MenuImage } from '../components/MenuImage';
 import { groupByItemKey, defaultSku, type ProductGroup } from '../lib/menu-group';
@@ -147,6 +148,31 @@ export function OrderPage() {
         },
       ];
     });
+  };
+
+  // パーソナライズ: 本人の履歴 (/api/orders は OBO+RLS で本人分のみ)
+  const [orders, setOrders] = useState<Order[]>([]);
+  useEffect(() => {
+    api.myOrders().then(setOrders).catch(() => setOrders([]));
+  }, []);
+  const frequent = useMemo(() => computeFrequent(orders, menu), [orders, menu]);
+  const lastOrder = orders[0]; // API returns newest first
+
+  const reorderLast = () => {
+    if (!lastOrder) return;
+    let added = 0;
+    for (const line of lastOrder.items) {
+      const m = menu.find((x) => x.sku === line.sku);
+      if (m) {
+        for (let k = 0; k < line.quantity; k++) addToCart(m);
+        added += line.quantity;
+      }
+    }
+    setNotice(
+      added > 0
+          ? `前回のご注文と同じ内容をカートに入れました(${added}点)。`
+          : '前回のご注文の商品はこの店舗では現在取り扱っていません。',
+    );
   };
 
   const bump = (sku: string, delta: number) => {
@@ -298,6 +324,36 @@ export function OrderPage() {
           </div>
         )}
         </div>
+
+        {(lastOrder || frequent.length > 0) && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {lastOrder && (
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={reorderLast}>
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" /> 前回と同じ
+                </Button>
+              )}
+              {frequent.length > 0 && <span className="text-xs text-muted-foreground">よく注文する商品</span>}
+            </div>
+            {frequent.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-1" data-frequent-row>
+                {frequent.map(({ item, count }) => (
+                  <div key={item.sku} className="w-40 shrink-0 rounded-md border bg-background p-2 flex flex-col gap-1">
+                    <MenuImage item={item} width={200} className="w-full" imgClassName="h-16" creditVariant="inline" />
+                    <div className="text-xs font-medium truncate">
+                      {item.item_name}
+                      <span className="ml-1 px-1 rounded bg-primary/10 text-primary text-[10px] font-medium">×{count}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{fmtPriceKcal(item)}</div>
+                    <Button size="sm" variant="outline" className="h-6 text-xs mt-auto" onClick={() => addToCart(item)}>
+                      <Plus className="h-3 w-3 mr-1" /> 追加
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <p className="text-sm text-muted-foreground">読み込み中…</p>

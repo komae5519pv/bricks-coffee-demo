@@ -30,7 +30,10 @@ interface PendingApproval {
 }
 
 /** Tools whose JSON result should render as product cards. */
-const PRODUCT_TOOLS = new Set(['search_menu', 'get_item_details']);
+const PRODUCT_TOOLS = new Set(['search_menu', 'get_item_details', 'get_my_frequent_items']);
+
+/** MenuItem plus optional personalization metadata from agent tools. */
+type CardItem = MenuItem & { order_count?: number; quantity?: number };
 
 /** recommend_set output shape (see server/agents/barista.ts). */
 interface RecommendSet {
@@ -65,12 +68,20 @@ const mdComponents = {
 function ProductMiniCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: MenuItem) => void }) {
   const [sku, setSku] = useState(() => defaultSku(group));
   const current = group.sizes.find((s) => s.sku === sku) ?? group.sizes[0];
+  const repeat = (current as CardItem).order_count;
   return (
     <div data-chat-product-card className="rounded-md border bg-background overflow-hidden">
       <div className="flex gap-3 p-3">
         <MenuImage item={current} width={200} className="w-20 shrink-0" imgClassName="h-16" creditVariant="inline" />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium truncate">{current.item_name}</div>
+          <div className="text-sm font-medium truncate">
+            {current.item_name}
+            {repeat != null && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-medium">
+                ×{repeat}
+              </span>
+            )}
+          </div>
           <div className="text-xs text-muted-foreground">{current.category}</div>
           <div className="text-sm font-semibold mt-0.5">{fmtPriceKcal(current)}</div>
         </div>
@@ -279,7 +290,13 @@ export function BaristaChat({
               <SetCard
                 key={m.id}
                 set={m.set}
-                onAddAll={(items) => items.forEach((item) => onAddToCart?.(item))}
+                onAddAll={(items) =>
+                  items.forEach((item) => {
+                    // reorder_last carries the original quantities
+                    const qty = (item as CardItem).quantity ?? 1;
+                    for (let i = 0; i < qty; i++) onAddToCart?.(item);
+                  })
+                }
               />
             );
           }

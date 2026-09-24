@@ -94,6 +94,11 @@ const INSTRUCTIONS = `
 ## 注文状況の確認
 - 「注文どうなった?」「さっきの注文は?」には get_my_orders を使うこと。
 
+## パーソナライズ(本人の履歴)
+- 「よく買ってるやつある?」「いつものは?」には get_my_frequent_items を使うこと。本人の実履歴に基づく回数付きランキングで答えること。
+- 「前回と同じので」「もう一度同じのを」には reorder_last を使うこと。カードの「まとめて追加」で同じ SKU・数量がカートに入ることを案内すること。
+- どちらも本人の注文履歴が0件なら、その旨を丁寧に伝えた上で、定番・人気商品(is_classic=true や scene 指定)を search_menu で案内すること。履歴が無いのに「いつもの」と言ってはいけない。
+
 ## 顧客の嗜好(アレルギー・好み)
 - 会話の中でユーザーがアレルギー(例: 牛乳アレルギー)や好み(例: 抹茶が好き)に言及したら、save_preference で保存することを提案し、了承されたら保存すること。勝手に保存しないこと。
 - おすすめを聞かれた時は、まず get_my_preferences で嗜好を確認し、アレルギー成分を含む商品は提案から外すこと。外した場合はその旨を一言伝えること。
@@ -296,6 +301,78 @@ export const barista = createAgent({
             currency,
             items: priced,
             message: '注文をデータベースに書き込みました。キッチンで受け付けています。',
+          };
+        },
+      }),
+
+      get_my_frequent_items: tool({
+        description:
+          'このユーザー本人の注文履歴を集計し、よく注文する商品ランキング(回数付き)を返します。「よく買ってるやつある?」「いつものは?」に使います。OBO + RLS で本人の履歴だけが対象です。0件なら「まだ注文履歴がありません」と伝え、search_menu で定番・人気商品を案内してください。',
+        schema: z.object({}),
+        annotations: { effect: 'read' },
+        execute: async () => {
+          const { rows } = await db.query(
+            `WITH counts AS (
+               SELECT oi.sku, SUM(oi.quantity)::int AS order_count, MAX(o.created_at) AS last_at
+               FROM cofee_shop.order_items oi
+               JOIN cofee_shop.orders o ON o.id = oi.order_id
+               WHERE o.user_email = current_user AND o.status <> 'cancelled'
+               GROUP BY oi.sku
+             )
+             SELECT m.sku, m.store_id, m.item_key, m.item_name, m.category, m.size, m.price::text,
+                    m.currency, m.description,
+                    m.image_url, m.image_photographer, m.image_photographer_url, m.image_unsplash_url,
+                    m.calories_kcal, m.protein_g::text, m.fat_g::text,
+                    m.contains_milk, m.contains_egg, m.contains_wheat, m.contains_nuts,
+                    m.alt_milk_options, m.scenes, m.is_classic, m.is_new, m.is_seasonal, m.target_tags,
+                    c.order_count
+             FROM counts c
+             JOIN cofee_shop.menu_items m ON m.sku = c.sku
+             WHERE m.active
+             ORDER BY c.order_count DESC, c.last_at DESC
+             LIMIT 6`,
+          );
+          return rows;
+        },
+      }),
+
+      reorder_last: tool({
+        description:
+          'このユーザー本人の直近の注文と同じ内容(SKU と数量)を返します。「前回と同じので」「いつものをもう一度」に使います。カードの「まとめて追加」でそのままカートに入れられます。OBO + RLS で本人の履歴だけが対象。0件なら「まだ注文履歴がありません」と伝え、search_menu で人気商品を案内してください。',
+        schema: z.object({}),
+        annotations: { effect: 'read' },
+        execute: async () => {
+          const { rows } = await db.query<{ order_id: string | null }>(
+            `SELECT id AS order_id FROM cofee_shop.orders
+             WHERE user_email = current_user AND status <> 'cancelled'
+             ORDER BY created_at DESC LIMIT 1`,
+          );
+          const lastId = rows[0]?.order_id;
+          if (!lastId) return { type: 'empty', message: 'まだ注文履歴がありません' };
+          const { rows: items } = await db.query(
+            `SELECT m.sku, m.store_id, m.item_key, m.item_name, m.category, m.size, m.price::text,
+                    m.currency, m.description,
+                    m.image_url, m.image_photographer, m.image_photographer_url, m.image_unsplash_url,
+                    m.calories_kcal, m.protein_g::text, m.fat_g::text,
+                    m.contains_milk, m.contains_egg, m.contains_wheat, m.contains_nuts,
+                    m.alt_milk_options, m.scenes, m.is_classic, m.is_new, m.is_seasonal, m.target_tags,
+                    oi.quantity
+             FROM cofee_shop.order_items oi
+             JOIN cofee_shop.menu_items m ON m.sku = oi.sku
+             WHERE oi.order_id = $1 AND m.active
+             ORDER BY oi.id`,
+            [lastId],
+          );
+          if (items.length === 0) return { type: 'empty', message: '直近の注文の商品は現在取り扱っていません' };
+          const list = items as Array<(typeof items)[number] & { quantity: number; price: string; calories_kcal: number | null; currency: string }>;
+          return {
+            type: 'recommend_set',
+            scene: 'reorder',
+            items: list,
+            total_price: list.reduce((s, i) => s + Number(i.price) * i.quantity, 0),
+            total_kcal: list.reduce((s, i) => s + (i.calories_kcal ?? 0) * i.quantity, 0),
+            currency: list[0].currency,
+            note: '前回のご注文と同じ内容です',
           };
         },
       }),
