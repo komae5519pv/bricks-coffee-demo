@@ -1,0 +1,8 @@
+command: ['npm', 'run', 'start']
+env:
+  - name: DATABRICKS_SERVING_ENDPOINT_NAME
+    valueFrom: agents-serving-endpoint
+  - name: EMBEDDING_ENDPOINT_NAME
+    valueFrom: embedding-endpoint
+  - name: LAKEBASE_ENDPOINT
+    valueFrom: postgres

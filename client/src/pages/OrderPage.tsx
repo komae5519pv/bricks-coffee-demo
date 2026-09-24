@@ -1,0 +1,237 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Card, CardContent, Input } from '@databricks/appkit-ui/react';
+import { Coffee, Minus, Plus, Search, ShoppingCart, Sparkles, Trash2 } from 'lucide-react';
+import { api, fmtPrice, type MenuItem, type Store } from '../lib/api';
+import { BaristaChat } from '../components/BaristaChat';
+
+interface CartLine {
+  sku: string;
+  item_name: string;
+  size: string;
+  unit_price: number;
+  currency: string;
+  quantity: number;
+}
+
+const STORE_KEY = 'daiwt-coffee-store';
+
+export function OrderPage() {
+  const [stores, setStores] = useState<Store[]>([]);
+  const [storeId, setStoreId] = useState<string>(() => localStorage.getItem(STORE_KEY) ?? '');
+  const [categories, setCategories] = useState<string[]>([]);
+  const [category, setCategory] = useState<string>('');
+  const [query, setQuery] = useState('');
+  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [searchMode, setSearchMode] = useState<'semantic' | 'fallback'>('fallback');
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [customerName, setCustomerName] = useState('');
+  const [notice, setNotice] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.stores().then((s) => {
+      setStores(s);
+      if (!storeId && s.length > 0) setStoreId(s[0].store_id);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!storeId) return;
+    localStorage.setItem(STORE_KEY, storeId);
+    api.categories(storeId).then(setCategories).catch(() => setCategories([]));
+  }, [storeId]);
+
+  const loadMenu = useCallback(async () => {
+    if (!storeId) return;
+    setLoading(true);
+    try {
+      const res = await api.menu(storeId, query || undefined, category || undefined);
+      setMenu(res.rows);
+      setSearchMode(res.mode);
+    } finally {
+      setLoading(false);
+    }
+  }, [storeId, query, category]);
+
+  useEffect(() => {
+    const t = setTimeout(loadMenu, 250);
+    return () => clearTimeout(t);
+  }, [loadMenu]);
+
+  const store = stores.find((s) => s.store_id === storeId);
+
+  const addToCart = (item: MenuItem) => {
+    setCart((prev) => {
+      const found = prev.find((l) => l.sku === item.sku);
+      if (found) return prev.map((l) => (l.sku === item.sku ? { ...l, quantity: l.quantity + 1 } : l));
+      return [
+        ...prev,
+        {
+          sku: item.sku,
+          item_name: item.item_name,
+          size: item.size,
+          unit_price: Number(item.price),
+          currency: item.currency,
+          quantity: 1,
+        },
+      ];
+    });
+  };
+
+  const bump = (sku: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((l) => (l.sku === sku ? { ...l, quantity: l.quantity + delta } : l))
+        .filter((l) => l.quantity > 0),
+    );
+  };
+
+  const total = useMemo(() => cart.reduce((s, l) => s + l.unit_price * l.quantity, 0), [cart]);
+  const currency = cart[0]?.currency ?? store?.currency ?? 'JPY';
+
+  const placeOrder = async () => {
+    if (!customerName.trim() || cart.length === 0) return;
+    try {
+      const order = await api.placeOrder(
+        storeId,
+        customerName.trim(),
+        cart.map((l) => ({ sku: l.sku, quantity: l.quantity })),
+      );
+      setCart([]);
+      setNotice(`注文 #${order.id.slice(0, 8)} を受け付けました(合計 ${fmtPrice(order.total_price, order.currency)})。キッチンが調理を始めます。`);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+            value={storeId}
+            onChange={(e) => { setStoreId(e.target.value); setCart([]); setCategory(''); }}
+          >
+            {stores.map((s) => (
+              <option key={s.store_id} value={s.store_id}>
+                {s.store_name} ({s.store_id})
+              </option>
+            ))}
+          </select>
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder="メニューを自然言語で検索(例: 甘くて冷たいドリンク)"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={category === '' ? 'default' : 'outline'} onClick={() => setCategory('')}>
+            すべて
+          </Button>
+          {categories.map((c) => (
+            <Button key={c} size="sm" variant={category === c ? 'default' : 'outline'} onClick={() => setCategory(c)}>
+              {c}
+            </Button>
+          ))}
+        </div>
+
+        {query && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Sparkles className="h-3.5 w-3.5" />
+            {searchMode === 'semantic'
+              ? 'セマンティック検索(pgvector + Foundation Model API の埋め込み)'
+              : 'キーワード検索(埋め込み準備中のためフォールバック)'}
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground">読み込み中…</p>
+        ) : menu.length === 0 ? (
+          <p className="text-sm text-muted-foreground">該当するメニューがありません</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {menu.map((item) => (
+              <Card key={item.sku} className="flex flex-col">
+                <CardContent className="p-4 flex flex-col gap-2 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium text-sm">{item.item_name}</div>
+                      <div className="text-xs text-muted-foreground">{item.category}{item.size !== 'N/A' ? ` · ${item.size}` : ''}</div>
+                    </div>
+                    <div className="font-semibold text-sm whitespace-nowrap">{fmtPrice(item.price, item.currency)}</div>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2 flex-1">{item.description}</p>
+                  <Button size="sm" variant="outline" onClick={() => addToCart(item)}>
+                    <Plus className="h-4 w-4 mr-1" /> 追加
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2 font-medium">
+              <ShoppingCart className="h-4 w-4" /> カート
+              {cart.length > 0 && (
+                <button className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1" onClick={() => setCart([])}>
+                  <Trash2 className="h-3.5 w-3.5" /> クリア
+                </button>
+              )}
+            </div>
+            {cart.length === 0 ? (
+              <p className="text-sm text-muted-foreground">メニューから追加してください</p>
+            ) : (
+              <>
+                {cart.map((l) => (
+                  <div key={l.sku} className="flex items-center gap-2 text-sm">
+                    <div className="flex-1">
+                      <div>{l.item_name}{l.size !== 'N/A' ? ` (${l.size})` : ''}</div>
+                      <div className="text-xs text-muted-foreground">{fmtPrice(l.unit_price, l.currency)}</div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => bump(l.sku, -1)}>
+                        <Minus className="h-3.5 w-3.5" />
+                      </Button>
+                      <span className="w-5 text-center">{l.quantity}</span>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => bump(l.sku, 1)}>
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <div className="border-t pt-2 flex justify-between font-semibold">
+                  <span>合計</span>
+                  <span>{fmtPrice(total, currency)}</span>
+                </div>
+                <Input
+                  placeholder="お名前(呼び出し用)"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                />
+                <Button className="w-full" disabled={!customerName.trim()} onClick={placeOrder}>
+                  <Coffee className="h-4 w-4 mr-1.5" /> この内容で注文する
+                </Button>
+              </>
+            )}
+            {notice && <p className="text-xs text-muted-foreground border-t pt-2">{notice}</p>}
+          </CardContent>
+        </Card>
+
+        <div>
+          <h3 className="text-sm font-medium mb-2">AI バリスタに相談</h3>
+          <BaristaChat storeId={storeId || null} />
+        </div>
+      </div>
+    </div>
+  );
+}
