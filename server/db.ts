@@ -45,7 +45,9 @@ CREATE TABLE IF NOT EXISTS cofee_shop.menu_items (
 );
 
 CREATE TABLE IF NOT EXISTS cofee_shop.orders (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- TEXT id (uuid rendered as text): Lakehouse Sync has no uuid mapping and
+  -- would replicate raw uuid columns as base64-encoded binary in Delta.
+  id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   store_id      TEXT NOT NULL REFERENCES cofee_shop.stores(store_id),
   user_email    TEXT NOT NULL,
   customer_name TEXT NOT NULL,
@@ -60,7 +62,7 @@ CREATE TABLE IF NOT EXISTS cofee_shop.orders (
 
 CREATE TABLE IF NOT EXISTS cofee_shop.order_items (
   id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_id   UUID NOT NULL REFERENCES cofee_shop.orders(id) ON DELETE CASCADE,
+  order_id   TEXT NOT NULL REFERENCES cofee_shop.orders(id) ON DELETE CASCADE,
   user_email TEXT NOT NULL,
   sku        TEXT NOT NULL,
   item_name  TEXT NOT NULL,
@@ -304,10 +306,31 @@ async function backfillEmbeddings(db: BootstrapDb, serving: EmbeddingsInvoker): 
   }
 }
 
+/**
+ * One-time migration for databases created with UUID order ids: convert to
+ * TEXT so Lakehouse Sync replicates readable ids (uuid syncs as base64
+ * binary). Idempotent; runs as the app service principal (table owner).
+ */
+const UUID_TO_TEXT_MIGRATION = `
+DO $$
+BEGIN
+  IF (SELECT data_type FROM information_schema.columns
+      WHERE table_schema = 'cofee_shop' AND table_name = 'orders' AND column_name = 'id') = 'uuid' THEN
+    ALTER TABLE cofee_shop.order_items DROP CONSTRAINT order_items_order_id_fkey;
+    ALTER TABLE cofee_shop.orders ALTER COLUMN id TYPE text USING id::text;
+    ALTER TABLE cofee_shop.orders ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
+    ALTER TABLE cofee_shop.order_items ALTER COLUMN order_id TYPE text USING order_id::text;
+    ALTER TABLE cofee_shop.order_items ADD CONSTRAINT order_items_order_id_fkey
+      FOREIGN KEY (order_id) REFERENCES cofee_shop.orders(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+`;
+
 /** Run once at startup, before the server accepts requests. */
 export async function initializeDatabase(db: BootstrapDb, serving: EmbeddingsInvoker): Promise<void> {
   await db.query('CREATE SCHEMA IF NOT EXISTS cofee_shop');
   await db.query(DDL);
+  await db.query(UUID_TO_TEXT_MIGRATION);
   await seedIfEmpty(db);
   await db.query(RLS);
   await db.query(GRANTS);
