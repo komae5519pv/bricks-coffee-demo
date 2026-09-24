@@ -54,7 +54,7 @@ function ProductMiniCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: 
   const [sku, setSku] = useState(() => defaultSku(group));
   const current = group.sizes.find((s) => s.sku === sku) ?? group.sizes[0];
   return (
-    <div className="rounded-md border bg-background overflow-hidden">
+    <div data-chat-product-card className="rounded-md border bg-background overflow-hidden">
       <div className="flex gap-3 p-3">
         <MenuImage item={current} width={200} className="w-20 shrink-0" imgClassName="h-16" creditVariant="inline" />
         <div className="flex-1 min-w-0">
