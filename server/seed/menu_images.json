@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-24T12:47:40.884Z",
+  "generated_at": "2026-09-24T13:00:27.354Z",
   "attribution_note": "Hotlink to images.unsplash.com only (no rehosting). Attribution required: Photo by {photographer} on Unsplash.",
   "products": {
     "DRIP": {
@@ -316,6 +316,27 @@
       "photographer_url": "https://unsplash.com/@shootdelicious?utm_source=daiwt_coffee_shop&utm_medium=referral",
       "unsplash_url": "https://unsplash.com/photos/a-bowl-of-cereal-with-milk-and-fruit-NI8MeJiAN3I?utm_source=daiwt_coffee_shop&utm_medium=referral",
       "source_query": "acai bowl granola fruit"
+    },
+    "HOJI": {
+      "url": "https://images.unsplash.com/photo-1657251631612-671d78ba32d4?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8aG9qaWNoYSUyMHRlYSUyMGphcGFufGVufDF8MHx8fDE3OTAyNTQwMzZ8MA&ixlib=rb-4.1.0",
+      "photographer": "Yuika Takamura",
+      "photographer_url": "https://unsplash.com/@blue_hamberts?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-close-up-of-a-hand-holding-a-green-pepper-OMwNzOert8U?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "hojicha tea japan"
+    },
+    "SAKU": {
+      "url": "https://images.unsplash.com/photo-1637706167581-2cbeeb116328?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8cGluayUyMHNha3VyYSUyMGRyaW5rfGVufDF8MHx8fDE3OTAyNTQwMzd8MA&ixlib=rb-4.1.0",
+      "photographer": "Z Graphica",
+      "photographer_url": "https://unsplash.com/@kiki_1323?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-can-of-green-tea-sitting-on-a-table-Q5rFQRm0Pj0?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "pink sakura drink"
+    },
+    "CANN": {
+      "url": "https://images.unsplash.com/photo-1769812343657-e0cce0999ea2?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Y2FuZWxlJTIwZnJlbmNoJTIwcGFzdHJ5fGVufDF8MHx8fDE3OTAyNTQ4MjZ8MA&ixlib=rb-4.1.0",
+      "photographer": "Jonathan Borba",
+      "photographer_url": "https://unsplash.com/@jonathanborba?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/small-chocolate-cakes-on-a-tiered-stand-SBHRb_JI49E?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "canele french pastry"
     }
   },
   "pool": {
