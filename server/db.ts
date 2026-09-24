@@ -86,6 +86,15 @@ CREATE TABLE IF NOT EXISTS cofee_shop.staff (
   store_id     TEXT  -- NULL = global staff (all stores)
 );
 
+CREATE TABLE IF NOT EXISTS cofee_shop.customer_preferences (
+  user_email       TEXT NOT NULL,
+  preference_key   TEXT NOT NULL,
+  preference_value TEXT NOT NULL,
+  note             TEXT NOT NULL DEFAULT '',
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_email, preference_key)
+);
+
 CREATE INDEX IF NOT EXISTS menu_items_store_cat_idx ON cofee_shop.menu_items (store_id, category);
 CREATE INDEX IF NOT EXISTS orders_store_status_idx ON cofee_shop.orders (store_id, status, created_at);
 CREATE INDEX IF NOT EXISTS orders_user_idx ON cofee_shop.orders (user_email, created_at);
@@ -129,6 +138,19 @@ CREATE POLICY order_items_owner_or_staff ON cofee_shop.order_items
                     WHERE o.id = order_items.order_id
                       AND (s.store_id IS NULL OR s.store_id = o.store_id)));
 
+ALTER TABLE cofee_shop.customer_preferences ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS preferences_owner ON cofee_shop.customer_preferences;
+CREATE POLICY preferences_owner ON cofee_shop.customer_preferences
+  FOR ALL
+  USING (user_email = current_user)
+  WITH CHECK (user_email = current_user);
+
+DROP POLICY IF EXISTS preferences_staff_read ON cofee_shop.customer_preferences;
+CREATE POLICY preferences_staff_read ON cofee_shop.customer_preferences
+  FOR SELECT
+  USING (EXISTS (SELECT 1 FROM cofee_shop.staff s WHERE s.email = current_user));
+
 DROP POLICY IF EXISTS menu_read_public ON cofee_shop.menu_items;
 CREATE POLICY menu_read_public ON cofee_shop.menu_items FOR SELECT USING (true);
 
@@ -162,12 +184,37 @@ GRANT SELECT ON cofee_shop.historical_orders TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.menu_items TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON cofee_shop.orders TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON cofee_shop.order_items TO PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.customer_preferences TO PUBLIC;
+`;
+
+/**
+ * Lakehouse Sync (Lakebase -> UC Delta CDC) requires REPLICA IDENTITY FULL on
+ * every source table so update/delete preimages land in the change feed.
+ * menu_items is excluded on purpose: its vector(1024) column is not a
+ * supported CDC type, and Genie reads the menu from a Delta copy instead.
+ */
+const CDC_REPLICA_IDENTITY = `
+ALTER TABLE cofee_shop.stores REPLICA IDENTITY FULL;
+ALTER TABLE cofee_shop.orders REPLICA IDENTITY FULL;
+ALTER TABLE cofee_shop.order_items REPLICA IDENTITY FULL;
+ALTER TABLE cofee_shop.historical_orders REPLICA IDENTITY FULL;
+ALTER TABLE cofee_shop.customer_preferences REPLICA IDENTITY FULL;
+ALTER TABLE cofee_shop.staff REPLICA IDENTITY FULL;
 `;
 
 const STAFF_SEED = `
 INSERT INTO cofee_shop.staff (email, display_name, store_id)
 VALUES ('konomi.omae@databricks.com', 'Konomi Omae', NULL)
 ON CONFLICT (email) DO NOTHING;
+`;
+
+/** Demo preferences so the Genie demo can show allergy-aware suggestions out of the box. */
+const PREFERENCES_SEED = `
+INSERT INTO cofee_shop.customer_preferences (user_email, preference_key, preference_value, note)
+VALUES
+  ('konomi.omae@databricks.com', 'milk_allergy', 'true', '牛乳アレルギー。乳成分(ミルク・ホイップ・クリーム系)を避ける'),
+  ('konomi.omae@databricks.com', 'likes', 'matcha, espresso', '抹茶系とエスプレッソ系が好み')
+ON CONFLICT (user_email, preference_key) DO NOTHING;
 `;
 
 function chunked<T>(arr: readonly T[], size: number): T[][] {
@@ -265,6 +312,8 @@ export async function initializeDatabase(db: BootstrapDb, serving: EmbeddingsInv
   await db.query(RLS);
   await db.query(GRANTS);
   await db.query(STAFF_SEED);
+  await db.query(PREFERENCES_SEED);
+  await db.query(CDC_REPLICA_IDENTITY);
   await backfillEmbeddings(db, serving);
   await db.query(HNSW_INDEX);
 }

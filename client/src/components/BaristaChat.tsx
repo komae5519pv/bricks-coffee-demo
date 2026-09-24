@@ -35,7 +35,9 @@ export function BaristaChat({ storeId }: { storeId: string | null }) {
   const [approval, setApproval] = useState<PendingApproval | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const storeRef = useRef(storeId);
-  storeRef.current = storeId;
+  useEffect(() => {
+    storeRef.current = storeId;
+  }, [storeId]);
 
   const handleEvent = (event: AgentChatEvent) => {
     if (event.type === 'response.output_item.added' && event.item?.type === 'function_call' && event.item.name) {
@@ -66,6 +68,9 @@ export function BaristaChat({ storeId }: { storeId: string | null }) {
 
   useEffect(() => {
     if (!pendingAssistantId) return;
+    // Sync the externally-streamed SSE content into the pending bubble —
+    // a legitimate external-store subscription, not a cascading render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages((prev) => prev.map((m) => (m.id === pendingAssistantId ? { ...m, content } : m)));
   }, [content, pendingAssistantId]);
 
@@ -137,10 +142,10 @@ export function BaristaChat({ storeId }: { storeId: string | null }) {
             </div>
             <div className="text-xs font-mono text-amber-800 break-all">{approval.args}</div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => decide('approve')}>
+              <Button size="sm" onClick={() => void decide('approve')}>
                 <Check className="h-4 w-4 mr-1" /> 承認する
               </Button>
-              <Button size="sm" variant="outline" onClick={() => decide('deny')}>
+              <Button size="sm" variant="outline" onClick={() => void decide('deny')}>
                 <X className="h-4 w-4 mr-1" /> 却下
               </Button>
             </div>
@@ -148,7 +153,7 @@ export function BaristaChat({ storeId }: { storeId: string | null }) {
         )}
       </CardContent>
 
-      <form onSubmit={handleSubmit} className="p-3 border-t flex gap-2">
+      <form onSubmit={(e) => void handleSubmit(e)} className="p-3 border-t flex gap-2">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}

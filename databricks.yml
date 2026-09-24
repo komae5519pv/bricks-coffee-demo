@@ -1,17 +1,40 @@
+# =============================================================================
+# daiwt-coffee-shop — 環境パラメータの単一ソース (single source of truth)
+#
+# カタログ/スキーマ/Lakebase/LLM/埋め込み/warehouse/Genie スペース ID はすべて
+# ここの variables に集約する。アプリ実行時に必要な値は tools/render_app_yaml.py
+# がこのファイルから app.yaml を再生成して注入する (app.yaml を直接編集しない)。
+#
+#   python3 tools/render_app_yaml.py          # app.yaml 再生成
+#   databricks bundle validate --profile fevm-konomi-demo
+#   databricks bundle deploy   --profile fevm-konomi-demo
+# =============================================================================
 bundle:
   name: daiwt-coffee-shop
 
 variables:
-  agents_serving_endpoint_name:
-    description: Default LLM serving endpoint name
-  embedding_endpoint_name:
-    description: Foundation Model API embedding endpoint for semantic menu search
+  # --- Unity Catalog (Delta 側: Lakehouse Sync の複製先 & Genie のデータソース) ---
+  catalog:
+    description: UC catalog that receives the Lakebase CDC history tables and hosts Genie data sources
+  schema:
+    description: 'UC schema for the coffee shop Delta objects (note: "cofee_shop" is the intentional spelling)'
+  warehouse_id:
+    description: SQL warehouse used for Delta-side status queries and the Genie space
+  genie_space_id:
+    description: Genie space ID over the synced Delta tables (filled after tools/create_genie_space.py)
+    default: ""
+  # --- Lakebase (OLTP 側) ---
+  postgres_project:
+    description: Full Lakebase Postgres project resource name
   postgres_branch:
     description: Full Lakebase Postgres branch resource name
   postgres_database:
     description: Full Lakebase Postgres database resource name
-  postgres_project:
-    description: Full Lakebase Postgres project resource name
+  # --- モデル ---
+  agents_serving_endpoint_name:
+    description: Default LLM serving endpoint name
+  embedding_endpoint_name:
+    description: Foundation Model API embedding endpoint for semantic menu search
 
 resources:
   apps:
@@ -42,6 +65,12 @@ resources:
             branch: ${var.postgres_branch}
             database: ${var.postgres_database}
             permission: CAN_CONNECT_AND_CREATE
+        # Delta 側の同期状態をアプリ内ステータスページから読むための warehouse。
+        # アプリのサービスプリンシパルに CAN_USE が付与される。
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
 
 targets:
   default:
@@ -51,8 +80,37 @@ targets:
       root_path: /Workspace/Users/konomi.omae@databricks.com/02_demo/apps/20260924_daiwt_tokyo_keynote
 
     variables:
-      agents_serving_endpoint_name: databricks-claude-sonnet-4-5
-      embedding_endpoint_name: databricks-qwen3-embedding-0-6b
+      catalog: konomi_demo_catalog
+      schema: cofee_shop
+      warehouse_id: 348478745ad64b30   # Serverless Starter Warehouse
+      genie_space_id: ""               # Genie スペース作成後に記録して再デプロイ
+      postgres_project: projects/konomi-coffee-shop
       postgres_branch: projects/konomi-coffee-shop/branches/production
       postgres_database: projects/konomi-coffee-shop/branches/production/databases/databricks-postgres
+      agents_serving_endpoint_name: databricks-claude-sonnet-4-5
+      embedding_endpoint_name: databricks-qwen3-embedding-0-6b
+
+  # ---------------------------------------------------------------------------
+  # 別環境ターゲットの例: `databricks bundle deploy -t staging --profile <PROFILE>`
+  # 同名アプリの衝突を避けるため mode: development (リソース名に [dev <user>] が付く)。
+  # 事前準備:
+  #   databricks postgres create-branch projects/konomi-coffee-shop staging \
+  #     --json '{"spec": {"source_branch": "projects/konomi-coffee-shop/branches/production", "no_expiry": true}}'
+  #   UC にスキーマ konomi_demo_catalog.cofee_shop_staging を作成
+  # ---------------------------------------------------------------------------
+  staging:
+    mode: development
+    workspace:
+      host: https://fevm-konomi-demo.cloud.databricks.com
+      root_path: /Workspace/Users/konomi.omae@databricks.com/02_demo/apps/20260924_daiwt_tokyo_keynote_staging
+
+    variables:
+      catalog: konomi_demo_catalog
+      schema: cofee_shop_staging
+      warehouse_id: 348478745ad64b30
+      genie_space_id: ""
       postgres_project: projects/konomi-coffee-shop
+      postgres_branch: projects/konomi-coffee-shop/branches/staging
+      postgres_database: projects/konomi-coffee-shop/branches/staging/databases/databricks-postgres
+      agents_serving_endpoint_name: databricks-claude-sonnet-4-5
+      embedding_endpoint_name: databricks-qwen3-embedding-0-6b

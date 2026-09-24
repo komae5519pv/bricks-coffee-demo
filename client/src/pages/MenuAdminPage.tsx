@@ -45,10 +45,13 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.stores().then((s) => {
-      setStores(s);
-      setStoreId(me?.staff_store_id ?? s[0]?.store_id ?? '');
-    });
+    void api
+      .stores()
+      .then((s) => {
+        setStores(s);
+        setStoreId(me?.staff_store_id ?? s[0]?.store_id ?? '');
+      })
+      .catch(() => setStores([]));
   }, [me]);
 
   const load = useCallback(async () => {
@@ -63,7 +66,7 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
   }, [storeId, q]);
 
   useEffect(() => {
-    const t = setTimeout(load, 250);
+    const t = setTimeout(() => void load(), 250);
     return () => clearTimeout(t);
   }, [load]);
 
@@ -109,23 +112,22 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
           item_name: edit.item_name,
           category: edit.category,
           size: edit.size,
-          price: edit.price,
+          price: Number(edit.price),
           currency: edit.currency,
           description: edit.description,
-          item_id: '',
           active: edit.active,
-        } as never);
+        });
         setNotice(`「${edit.item_name}」を追加しました(${r.sku})。埋め込みも生成済みで、AIバリスタの検索にすぐ反映されます。`);
       } else {
         const r = await api.adminPatch(edit.sku, {
           item_name: edit.item_name,
           category: edit.category,
           size: edit.size,
-          price: edit.price,
+          price: Number(edit.price),
           currency: edit.currency,
           description: edit.description,
           active: edit.active,
-        } as never);
+        });
         setNotice(
           r.reembedded
             ? `「${edit.item_name}」を更新し、埋め込みを再生成しました。AIバリスタの検索にすぐ反映されます。`
@@ -133,21 +135,21 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
         );
       }
       setEdit(null);
-      load();
+      void load();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : String(e));
     }
   };
 
   const toggleActive = async (item: MenuItem) => {
-    await api.adminPatch(item.sku, { active: !(item.active !== false) } as never);
-    load();
+    await api.adminPatch(item.sku, { active: !(item.active !== false) });
+    void load();
   };
 
   const remove = async (item: MenuItem) => {
     if (!confirm(`「${item.item_name}」を削除しますか?`)) return;
     await api.adminDelete(item.sku);
-    load();
+    void load();
   };
 
   return (
@@ -208,7 +210,7 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
               販売中
             </label>
             <div className="flex gap-2 md:col-span-3">
-              <Button onClick={save}>{edit.sku === null ? '追加する' : '保存する'}</Button>
+              <Button onClick={() => void save()}>{edit.sku === null ? '追加する' : '保存する'}</Button>
               <Button variant="outline" onClick={() => setEdit(null)}>キャンセル</Button>
             </div>
           </CardContent>
@@ -242,7 +244,7 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
                   <td className="p-2">
                     <button
                       className={`text-xs px-2 py-0.5 rounded-full ${item.active !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}
-                      onClick={() => toggleActive(item)}
+                      onClick={() => void toggleActive(item)}
                       title="クリックで切替"
                     >
                       {item.active !== false ? '販売中' : '停止中'}
@@ -253,7 +255,7 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEdit(item)} title="編集">
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => remove(item)} title="削除">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => void remove(item)} title="削除">
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>

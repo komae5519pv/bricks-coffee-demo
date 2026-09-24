@@ -13,6 +13,7 @@ import { initializeDatabase } from './db';
 import { registerCoffeeRoutes } from './routes';
 import type { EmbeddingsInvoker } from './lib/embed';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- runtime value unused; kept for the exported type
 const appkit = await createApp({
   plugins: [
     agents({ agents: { barista } }),

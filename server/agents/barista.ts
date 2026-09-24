@@ -16,6 +16,35 @@ import type { DbLike } from '../lib/menu';
 import { searchMenu, priceCart, getActiveItem } from '../lib/menu';
 import type { EmbeddingsInvoker } from '../lib/embed';
 
+interface StoreRow {
+  store_id: string;
+  store_name: string;
+  country: string;
+  currency: string;
+  locale: string;
+}
+
+interface PreferenceRow {
+  preference_key: string;
+  preference_value: string;
+  note: string;
+}
+
+interface MyOrderRow {
+  id: string;
+  store_id: string;
+  status: string;
+  total_price: string;
+  currency: string;
+  created_at: string;
+  items: unknown;
+}
+
+interface BoardRow extends MyOrderRow {
+  customer_name: string;
+  channel: string;
+}
+
 function requirePlugin<T extends object>(p: unknown, name: string, methods: string[]): T {
   if (!p || typeof p !== 'object') {
     throw new Error(`${name} plugin is not registered in createApp`);
@@ -49,6 +78,11 @@ const INSTRUCTIONS = `
 ## 注文状況の確認
 - 「注文どうなった?」「さっきの注文は?」には get_my_orders を使うこと。
 
+## 顧客の嗜好(アレルギー・好み)
+- 会話の中でユーザーがアレルギー(例: 牛乳アレルギー)や好み(例: 抹茶が好き)に言及したら、save_preference で保存することを提案し、了承されたら保存すること。勝手に保存しないこと。
+- おすすめを聞かれた時は、まず get_my_preferences で嗜好を確認し、アレルギー成分を含む商品は提案から外すこと。外した場合はその旨を一言伝えること。
+- preference_key は英小文字スネークケース(例: milk_allergy, likes, dislikes)。
+
 ## スタッフ機能
 - キッチンボードの確認には get_order_board、ステータス更新には update_order_status を使うこと。
 - これらはスタッフ以外は使えません。権限がない場合はその旨を丁寧に伝えること。
@@ -71,7 +105,7 @@ export const barista = createAgent({
         schema: z.object({}),
         annotations: { effect: 'read' },
         execute: async () => {
-          const { rows } = await db.query(
+          const { rows } = await db.query<StoreRow>(
             'SELECT store_id, store_name, country, currency, locale FROM cofee_shop.stores ORDER BY country, store_id',
           );
           return rows;
@@ -160,7 +194,7 @@ export const barista = createAgent({
         schema: z.object({}),
         annotations: { effect: 'read' },
         execute: async () => {
-          const { rows } = await db.query(
+          const { rows } = await db.query<MyOrderRow>(
             `SELECT o.id, o.store_id, o.status, o.total_price::text, o.currency, o.created_at,
                     json_agg(json_build_object('item_name', i.item_name, 'size', i.size, 'quantity', i.quantity)) AS items
              FROM cofee_shop.orders o
@@ -171,12 +205,55 @@ export const barista = createAgent({
         },
       }),
 
+      get_my_preferences: tool({
+        description: 'このユーザー自身の嗜好設定(アレルギー・好みなど)を取得します。おすすめを提案する前に必ず確認してください。',
+        schema: z.object({}),
+        annotations: { effect: 'read' },
+        execute: async () => {
+          const { rows } = await db.query<PreferenceRow>(
+            `SELECT preference_key, preference_value, note
+             FROM cofee_shop.customer_preferences
+             WHERE user_email = current_user
+             ORDER BY preference_key`,
+          );
+          if (rows.length === 0) return { message: '登録されている嗜好はありません' };
+          return rows;
+        },
+      }),
+
+      save_preference: tool({
+        description:
+          'ユーザーの嗜好(アレルギー・好みなど)をデータベースに保存します。会話で嗜好に言及があり、ユーザーが保存に同意した場合にのみ使用。OBO で書き込まれるため本人の行として記録されます。',
+        schema: z.object({
+          preference_key: z
+            .string()
+            .regex(/^[a-z0-9_]+$/)
+            .describe('嗜好のキー(英小文字スネークケース)。例: milk_allergy, likes, dislikes'),
+          preference_value: z.string().describe('嗜好の値。例: true, matcha'),
+          note: z.string().optional().describe('補足メモ(例: 牛乳アレルギー。乳成分を避ける)'),
+        }),
+        annotations: { effect: 'write' },
+        execute: async ({ preference_key, preference_value, note }) => {
+          const { rows } = await db.query<PreferenceRow>(
+            `INSERT INTO cofee_shop.customer_preferences (user_email, preference_key, preference_value, note)
+             VALUES (current_user, $1, $2, $3)
+             ON CONFLICT (user_email, preference_key)
+             DO UPDATE SET preference_value = EXCLUDED.preference_value,
+                           note = EXCLUDED.note,
+                           updated_at = now()
+             RETURNING preference_key, preference_value, note`,
+            [preference_key, preference_value, note ?? ''],
+          );
+          return { ...rows[0], message: '嗜好を保存しました' };
+        },
+      }),
+
       get_order_board: tool({
         description: '【スタッフ専用】店舗のキッチンボード(調理中の全注文)を取得します。',
         schema: z.object({ store_id: z.string() }),
         annotations: { effect: 'read' },
         execute: async ({ store_id }) => {
-          const { rows } = await db.query(
+          const { rows } = await db.query<BoardRow>(
             `SELECT o.id, o.customer_name, o.channel, o.status, o.total_price::text, o.currency, o.created_at,
                     json_agg(json_build_object('item_name', i.item_name, 'size', i.size, 'quantity', i.quantity)) AS items
              FROM cofee_shop.orders o

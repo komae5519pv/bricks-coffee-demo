@@ -17,10 +17,13 @@ export function BoardPage({ me }: { me: Me | null }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.stores().then((s) => {
-      setStores(s);
-      setStoreId(me?.staff_store_id ?? s[0]?.store_id ?? '');
-    });
+    void api
+      .stores()
+      .then((s) => {
+        setStores(s);
+        setStoreId(me?.staff_store_id ?? s[0]?.store_id ?? '');
+      })
+      .catch(() => setStores([]));
   }, [me]);
 
   const load = useCallback(() => {
@@ -98,7 +101,7 @@ export function BoardPage({ me }: { me: Me | null }) {
                       <Button
                         size="sm"
                         className="w-full"
-                        onClick={() => api.setStatus(o.id, col.next!).then(load).catch((e) => setError(String(e)))}
+                        onClick={() => void api.setStatus(o.id, col.next!).then(load).catch((e) => setError(String(e)))}
                       >
                         {col.nextLabel}
                       </Button>

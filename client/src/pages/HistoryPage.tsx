@@ -10,7 +10,7 @@ export function HistoryPage() {
   const [data, setData] = useState<HistorySummary | null>(null);
 
   useEffect(() => {
-    api.stores().then(setStores);
+    void api.stores().then(setStores).catch(() => setStores([]));
   }, []);
 
   const load = useCallback(() => {

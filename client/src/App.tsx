@@ -8,13 +8,14 @@ import {
   SheetTitle,
   useIsMobile,
 } from '@databricks/appkit-ui/react';
-import { BarChart3, ChefHat, ClipboardList, Coffee, Menu, Settings2 } from 'lucide-react';
+import { Activity, BarChart3, ChefHat, ClipboardList, Coffee, Menu, Settings2 } from 'lucide-react';
 import { api, type Me } from './lib/api';
 import { OrderPage } from './pages/OrderPage';
 import { MyOrdersPage } from './pages/MyOrdersPage';
 import { BoardPage } from './pages/BoardPage';
 import { MenuAdminPage } from './pages/MenuAdminPage';
 import { HistoryPage } from './pages/HistoryPage';
+import { StatusPage } from './pages/StatusPage';
 
 type NavLinkClassFn = (props: { isActive: boolean }) => string;
 
@@ -64,6 +65,9 @@ function NavLinks({
       <NavLink to="/history" className={linkClass} onClick={onClick}>
         <BarChart3 className="h-4 w-4" /> 売上・履歴
       </NavLink>
+      <NavLink to="/status" className={linkClass} onClick={onClick}>
+        <Activity className="h-4 w-4" /> ステータス
+      </NavLink>
     </nav>
   );
 }
@@ -77,9 +81,11 @@ function Layout() {
     api.me().then(setMe).catch(() => setMe(null));
   }, []);
 
-  useEffect(() => {
-    if (!isMobile) setMobileNavOpen(false);
-  }, [isMobile]);
+  // Close the mobile nav when the layout switches to desktop: state is
+  // adjusted during rendering (React-sanctioned) instead of in an effect.
+  if (!isMobile && mobileNavOpen) {
+    setMobileNavOpen(false);
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -151,6 +157,7 @@ const router = createBrowserRouter([
       { path: '/board', element: <BoardRoute /> },
       { path: '/admin/menu', element: <MenuAdminRoute /> },
       { path: '/history', element: <HistoryPage /> },
+      { path: '/status', element: <StatusPage /> },
     ],
   },
 ]);

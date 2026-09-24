@@ -30,6 +30,19 @@ export interface MenuItem {
   distance?: number;
 }
 
+/** Input for menu create/update (price is a number on the wire; the server validates with zod). */
+export interface MenuItemInput {
+  store_id?: string;
+  item_key?: string;
+  item_name?: string;
+  category?: string;
+  size?: string;
+  price?: number;
+  currency?: string;
+  description?: string;
+  active?: boolean;
+}
+
 export interface OrderItem {
   sku?: string;
   item_name: string;
@@ -60,13 +73,72 @@ export interface HistorySummary {
   today_currency: string | null;
 }
 
+export interface Preference {
+  preference_key: string;
+  preference_value: string;
+  note: string;
+  updated_at: string;
+}
+
+export interface StatusResponse {
+  agent: {
+    name: string;
+    hosting: string;
+    model_endpoint: string | null;
+    embedding_endpoint: string | null;
+    tracing: string;
+    tools: string[];
+  };
+  obo: {
+    forwarded_user: string | null;
+    forwarded_email: string | null;
+    token_present: boolean;
+    token_claims: Record<string, unknown> | null;
+  };
+  config: {
+    catalog: string | null;
+    schema: string | null;
+    lakebase_project: string | null;
+    lakebase_endpoint: string | null;
+    warehouse_id: string | null;
+    genie_space_id: string | null;
+    genie_space_url: string | null;
+  };
+  lakebase: {
+    ok: boolean;
+    error?: string;
+    server_version?: string;
+    db_now?: string;
+    orders_count?: string;
+    latest_order?: {
+      id: string;
+      created_at: string;
+      channel: string;
+      status: string;
+      customer_name: string;
+    } | null;
+    wal2delta_tables?: unknown[] | null;
+  };
+  delta_sync: {
+    ok: boolean;
+    error?: string;
+    catalog?: string;
+    schema?: string;
+    warehouse_id?: string;
+    lb_orders_history_rows?: string;
+    delta_last_change_at?: string | null;
+    delta_last_order_created_at?: string | null;
+    lag_seconds?: number | null;
+  };
+}
+
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
     ...init,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
@@ -95,13 +167,20 @@ export const api = {
     }),
   history: (storeId?: string) =>
     req<HistorySummary>(`/api/history/summary${storeId ? `?store_id=${encodeURIComponent(storeId)}` : ''}`),
+  status: () => req<StatusResponse>('/api/status'),
+  preferences: () => req<Preference[]>('/api/preferences'),
+  savePreference: (key: string, value: string, note = '') =>
+    req<Preference>('/api/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ preference_key: key, preference_value: value, note }),
+    }),
   adminMenu: (storeId: string, q?: string) =>
     req<{ rows: MenuItem[]; mode: string }>(
       `/api/admin/menu?store_id=${encodeURIComponent(storeId)}&limit=300${q ? `&q=${encodeURIComponent(q)}` : ''}`,
     ),
-  adminCreate: (item: Omit<MenuItem, 'sku' | 'active' | 'distance'> & { active?: boolean }) =>
+  adminCreate: (item: MenuItemInput) =>
     req<{ sku: string }>('/api/admin/menu', { method: 'POST', body: JSON.stringify(item) }),
-  adminPatch: (sku: string, patch: Partial<MenuItem>) =>
+  adminPatch: (sku: string, patch: MenuItemInput) =>
     req<{ sku: string; reembedded: boolean }>(`/api/admin/menu/${encodeURIComponent(sku)}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),

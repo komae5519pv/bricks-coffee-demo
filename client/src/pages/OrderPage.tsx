@@ -29,10 +29,14 @@ export function OrderPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.stores().then((s) => {
-      setStores(s);
-      if (!storeId && s.length > 0) setStoreId(s[0].store_id);
-    });
+    void api
+      .stores()
+      .then((s) => {
+        setStores(s);
+        if (!storeId && s.length > 0) setStoreId(s[0].store_id);
+      })
+      .catch(() => setStores([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   useEffect(() => {
@@ -54,7 +58,7 @@ export function OrderPage() {
   }, [storeId, query, category]);
 
   useEffect(() => {
-    const t = setTimeout(loadMenu, 250);
+    const t = setTimeout(() => void loadMenu(), 250);
     return () => clearTimeout(t);
   }, [loadMenu]);
 
@@ -218,7 +222,7 @@ export function OrderPage() {
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 />
-                <Button className="w-full" disabled={!customerName.trim()} onClick={placeOrder}>
+                <Button className="w-full" disabled={!customerName.trim()} onClick={() => void placeOrder()}>
                   <Coffee className="h-4 w-4 mr-1.5" /> この内容で注文する
                 </Button>
               </>

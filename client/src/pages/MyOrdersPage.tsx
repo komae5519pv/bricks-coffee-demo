@@ -9,11 +9,12 @@ export function MyOrdersPage() {
 
   useEffect(() => {
     let stop = false;
-    const load = () =>
-      api
+    const load = () => {
+      void api
         .myOrders()
         .then((o) => !stop && setOrders(o))
         .catch((e) => !stop && setError(String(e)));
+    };
     load();
     const t = setInterval(load, 5000);
     return () => {

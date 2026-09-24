@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { AppHandle } from './server';
 import type { EmbeddingsInvoker } from './lib/embed';
 import { searchMenu, priceCart, reembedItems, type DbLike } from './lib/menu';
+import { getDeltaSyncStatus, getLakebaseStatus } from './lib/status';
 
 export interface OrderRow {
   id: string;
@@ -41,6 +42,13 @@ function forwardedEmail(req: Request): string | null {
   const h = req.headers['x-forwarded-email'];
   const email = Array.isArray(h) ? h[0] : h;
   return email && email.includes('@') ? email : null;
+}
+
+/** Express query values are string | string[] | ParsedQs — normalize to a plain string. */
+function qstr(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v) && typeof v[0] === 'string') return v[0];
+  return '';
 }
 
 const orderInputSchema = z.object({
@@ -111,10 +119,10 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
     app.get('/api/menu', async (req: Request, res: Response) => {
       try {
         const result = await searchMenu(spDb, serving, {
-          store_id: String(req.query.store_id ?? ''),
-          query: req.query.q ? String(req.query.q) : undefined,
-          category: req.query.category ? String(req.query.category) : undefined,
-          size: req.query.size ? String(req.query.size) : undefined,
+          store_id: qstr(req.query.store_id),
+          query: qstr(req.query.q) || undefined,
+          category: qstr(req.query.category) || undefined,
+          size: qstr(req.query.size) || undefined,
           max_price: req.query.max_price ? Number(req.query.max_price) : undefined,
           limit: req.query.limit ? Number(req.query.limit) : 50,
         });
@@ -129,7 +137,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
       try {
         const { rows } = await spDb.query(
           'SELECT DISTINCT category FROM cofee_shop.menu_items WHERE store_id = $1 AND active ORDER BY category',
-          [String(req.query.store_id ?? '')],
+          [qstr(req.query.store_id)],
         );
         res.json(rows.map((r: { category: string }) => r.category));
       } catch (e) {
@@ -191,7 +199,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
         const { rows } = await userDb(req).query<OrderRow>(
           `${ORDERS_WITH_ITEMS} WHERE o.status IN ('received','preparing','ready') AND o.store_id = $1
            GROUP BY o.id ORDER BY o.created_at ASC`,
-          [String(req.query.store_id ?? '')],
+          [qstr(req.query.store_id)],
         );
         res.json(rows);
       } catch (e) {
@@ -226,7 +234,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
     /** History / analytics aggregates, straight from Lakebase. */
     app.get('/api/history/summary', async (req: Request, res: Response) => {
       try {
-        const storeId = req.query.store_id ? String(req.query.store_id) : null;
+        const storeId = qstr(req.query.store_id) || null;
         const [popular, monthly, live] = await Promise.all([
           spDb.query(
             `SELECT m.item_name, SUM(h.quantity)::text AS qty, COUNT(DISTINCT h.order_id)::text AS orders
@@ -244,7 +252,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
              GROUP BY 1 ORDER BY 1`,
             [storeId],
           ),
-          spDb.query(
+          spDb.query<{ today_orders: string; today_revenue: string; currency: string }>(
             `SELECT COUNT(*)::text AS today_orders, COALESCE(SUM(total_price), 0)::text AS today_revenue, currency
              FROM cofee_shop.orders
              WHERE created_at::date = CURRENT_DATE AND status <> 'cancelled'
@@ -266,6 +274,169 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
     });
 
     // ------------------------------------------------------------------
+    // Customer preferences (allergies, likes, ...). Owner-only via RLS:
+    // rows are keyed by user_email = current_user, written over the
+    // caller's per-user OBO pool. The barista agent's save_preference tool
+    // lands here in the same table; Genie later reads the CDC-replicated
+    // Delta copy to make allergy-aware suggestions.
+    // ------------------------------------------------------------------
+
+    const preferenceInputSchema = z.object({
+      preference_key: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/),
+      preference_value: z.string().min(1).max(500),
+      note: z.string().max(1000).default(''),
+    });
+
+    /** My preferences (RLS: own rows only). */
+    app.get('/api/preferences', async (req: Request, res: Response) => {
+      try {
+        const { rows } = await appkit.lakebase.asUser(req).query(
+          `SELECT preference_key, preference_value, note, updated_at::text
+           FROM cofee_shop.customer_preferences
+           WHERE user_email = current_user
+           ORDER BY preference_key`,
+        );
+        res.json(rows);
+      } catch (e) {
+        res.status(500).json({ error: String(e) });
+      }
+    });
+
+    /** Upsert one of my preferences. */
+    app.put('/api/preferences', async (req: Request, res: Response) => {
+      const parsed = preferenceInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'invalid input', details: parsed.error.issues });
+        return;
+      }
+      try {
+        const d = parsed.data;
+        const { rows } = await userDb(req).query(
+          `INSERT INTO cofee_shop.customer_preferences (user_email, preference_key, preference_value, note)
+           VALUES (current_user, $1, $2, $3)
+           ON CONFLICT (user_email, preference_key)
+           DO UPDATE SET preference_value = EXCLUDED.preference_value,
+                         note = EXCLUDED.note,
+                         updated_at = now()
+           RETURNING preference_key, preference_value, note, updated_at::text`,
+          [d.preference_key, d.preference_value, d.note],
+        );
+        res.json(rows[0]);
+      } catch (e) {
+        res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+      }
+    });
+
+    /** Delete one of my preferences. */
+    app.delete('/api/preferences/:key', async (req: Request, res: Response) => {
+      try {
+        const { rowCount } = await userDb(req).query(
+          'DELETE FROM cofee_shop.customer_preferences WHERE user_email = current_user AND preference_key = $1',
+          [req.params.key],
+        );
+        if (!rowCount) {
+          res.status(404).json({ error: 'preference not found' });
+          return;
+        }
+        res.json({ deleted: req.params.key });
+      } catch (e) {
+        res.status(500).json({ error: String(e) });
+      }
+    });
+
+    // ------------------------------------------------------------------
+    // Architecture/status page backend.
+    // ------------------------------------------------------------------
+
+    /**
+     * OBO (on-behalf-of) token inspection, for the demo status page.
+     *
+     * How per-user auth flows in this app (Databricks Apps platform):
+     *   1. The user signs in with their own Databricks identity in front of
+     *      the app; the platform terminates SSO.
+     *   2. On every request the platform injects headers the app can trust:
+     *        x-forwarded-user         — the caller's username (email)
+     *        x-forwarded-email        — the caller's email
+     *        x-forwarded-access-token — a short-lived OAuth token issued TO
+     *                                   THE USER, delegated to this app
+     *   3. AppKit's `lakebase.asUser(req)` takes that user token and opens a
+     *      per-user PostgreSQL pool with it, so every query runs AS THE USER
+     *      (Postgres current_user = their identity) and Row-Level Security
+     *      decides what rows they can see or change.
+     *
+     * Below we only *decode* the JWT payload (no verification needed — the
+     * platform already authenticated it) and mask every claim value, purely
+     * to make the OBO mechanism visible during the demo. The token itself is
+     * never logged or returned.
+     */
+    const SAFE_CLAIMS = new Set(['iss', 'aud', 'exp', 'iat', 'nbf', 'scope', 'token_type', 'typ']);
+    function maskClaim(value: unknown): unknown {
+      if (typeof value !== 'string') return value;
+      if (value.length <= 8) return '********';
+      return `${value.slice(0, 6)}…${value.slice(-4)}`;
+    }
+    function decodeOboTokenClaims(req: Request): Record<string, unknown> | null {
+      const h = req.headers['x-forwarded-access-token'];
+      const token = Array.isArray(h) ? h[0] : h;
+      if (!token) return null;
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+      try {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as Record<string, unknown>;
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(payload)) {
+          out[k] = SAFE_CLAIMS.has(k) ? v : maskClaim(v);
+        }
+        return out;
+      } catch {
+        return null;
+      }
+    }
+
+    /** Aggregated runtime status: agent facts, OBO claims, Lakebase<->Delta sync. */
+    app.get('/api/status', async (req: Request, res: Response) => {
+      try {
+        const lakebase = await getLakebaseStatus(spDb);
+        const delta = await getDeltaSyncStatus(lakebase.latest_order?.created_at ?? null);
+        const workspaceHost = (process.env.DATABRICKS_HOST ?? '').replace(/\/$/, '');
+        const genieSpaceId = process.env.GENIE_SPACE_ID ?? '';
+        res.json({
+          agent: {
+            name: 'barista',
+            hosting: 'on-app (AppKit agents plugin, beta)',
+            model_endpoint: process.env.DATABRICKS_SERVING_ENDPOINT_NAME ?? null,
+            embedding_endpoint: process.env.EMBEDDING_ENDPOINT_NAME ?? null,
+            tracing: 'OpenTelemetry spans (AppKit execution pipeline, automatic)',
+            tools: [
+              'get_stores', 'search_menu', 'get_item_details', 'place_order',
+              'get_my_orders', 'get_order_board', 'update_order_status',
+              'get_my_preferences', 'save_preference',
+            ],
+          },
+          obo: {
+            forwarded_user: req.headers['x-forwarded-user'] ?? null,
+            forwarded_email: req.headers['x-forwarded-email'] ?? null,
+            token_present: Boolean(req.headers['x-forwarded-access-token']),
+            token_claims: decodeOboTokenClaims(req),
+          },
+          config: {
+            catalog: process.env.COFFEE_CATALOG ?? null,
+            schema: process.env.COFFEE_SCHEMA ?? null,
+            lakebase_project: process.env.LAKEBASE_PROJECT ?? null,
+            lakebase_endpoint: process.env.LAKEBASE_ENDPOINT ?? null,
+            warehouse_id: process.env.DATABRICKS_WAREHOUSE_ID ?? null,
+            genie_space_id: genieSpaceId || null,
+            genie_space_url: genieSpaceId && workspaceHost ? `${workspaceHost}/genie/rooms/${genieSpaceId}` : null,
+          },
+          lakebase,
+          delta_sync: delta,
+        });
+      } catch (e) {
+        res.status(500).json({ error: String(e) });
+      }
+    });
+
+    // ------------------------------------------------------------------
     // Menu admin (staff). All writes go through asUser(req): Postgres RLS
     // is the authorization layer - only staff of that store can write.
     // Embeddings are regenerated synchronously on every change, so the
@@ -276,8 +447,8 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
     app.get('/api/admin/menu', async (req: Request, res: Response) => {
       try {
         const result = await searchMenu(userDb(req), serving, {
-          store_id: String(req.query.store_id ?? ''),
-          query: req.query.q ? String(req.query.q) : undefined,
+          store_id: qstr(req.query.store_id),
+          query: qstr(req.query.q) || undefined,
           limit: req.query.limit ? Number(req.query.limit) : 200,
           activeOnly: false,
         });
