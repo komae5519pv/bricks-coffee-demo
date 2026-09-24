@@ -204,7 +204,7 @@ export function BaristaChat({
   };
 
   return (
-    <Card className="h-[min(560px,65vh)] flex flex-col">
+    <Card className="h-[min(560px,65vh)] lg:h-full lg:min-h-0 flex flex-col">
       <CardContent className="flex-1 overflow-y-auto p-4 space-y-3" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="text-sm text-muted-foreground mt-6 space-y-2">

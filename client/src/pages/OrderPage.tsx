@@ -156,6 +156,10 @@ export function OrderPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
       <div className="space-y-4">
+        {/* Sticky filter bar: store selector, NL search, category chips stay
+            operable while the menu grid scrolls (opaque bg so cards don't
+            show through). */}
+        <div className="sticky top-0 z-10 -mx-4 md:-mx-6 px-4 md:px-6 pt-1 pb-3 space-y-3 bg-background border-b border-border/60">
         <div className="flex flex-wrap items-center gap-3">
           <select
             className="h-9 rounded-md border bg-background px-3 text-sm"
@@ -198,6 +202,7 @@ export function OrderPage() {
               : 'キーワード検索(埋め込み準備中のためフォールバック)'}
           </div>
         )}
+        </div>
 
         {loading ? (
           <p className="text-sm text-muted-foreground">読み込み中…</p>
@@ -212,9 +217,12 @@ export function OrderPage() {
         )}
       </div>
 
-      <div className="space-y-4">
-        <Card>
-          <CardContent className="p-4 space-y-3">
+      {/* Right column: cart + chat stick to the viewport on desktop. Cart
+          keeps its natural height (internal scroll when long), the chat gets
+          the remaining height with its own internal scroll. */}
+      <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:flex lg:max-h-[calc(100vh-2rem)] lg:flex-col">
+        <Card className="lg:shrink-0">
+          <CardContent className="p-4 space-y-3 lg:max-h-[45vh] lg:overflow-y-auto">
             <div className="flex items-center gap-2 font-medium">
               <ShoppingCart className="h-4 w-4" /> カート
               {cart.length > 0 && (
@@ -262,8 +270,8 @@ export function OrderPage() {
           </CardContent>
         </Card>
 
-        <div>
-          <h3 className="text-sm font-medium mb-2">AI バリスタに相談</h3>
+        <div className="lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
+          <h3 className="text-sm font-medium mb-2 shrink-0">AI バリスタに相談</h3>
           <BaristaChat storeId={storeId || null} onAddToCart={addToCart} />
         </div>
       </div>
