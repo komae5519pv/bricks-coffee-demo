@@ -61,6 +61,23 @@ await page.waitForTimeout(4000); // let lazy images settle
 const order = await imageStats();
 console.log('order tab:', JSON.stringify(order));
 
+// --- size consolidation: every product appears on exactly ONE card, and
+// size chips change the displayed price ---
+const cardNames = await page
+  .locator('.grid .font-medium.text-sm')
+  .allTextContents();
+const dupNames = cardNames.filter((n, i) => cardNames.indexOf(n) !== i);
+const firstCard = page.locator('.grid > div').first();
+const priceM = await firstCard.locator('div.font-semibold', { hasText: '¥' }).first().textContent();
+const lChip = firstCard.getByRole('button', { name: 'L', exact: true });
+let priceL = priceM;
+if (await lChip.count()) {
+  await lChip.click();
+  await page.waitForTimeout(300);
+  priceL = await firstCard.locator('div.font-semibold', { hasText: '¥' }).first().textContent();
+}
+console.log(JSON.stringify({ cards: cardNames.length, dupNames, priceM, priceL }));
+
 // --- brand + role-based navigation ---
 const brand = await page.getByRole('heading', { name: 'BRICKS COFFEE' }).count();
 const navCount = async () => page.locator('header nav a').count();
@@ -103,6 +120,8 @@ if (brand !== 1) failures.push('brand heading BRICKS COFFEE not found');
 if (staffNav !== 6) failures.push(`staff nav should be 6 items, got ${staffNav}`);
 if (customerNav !== 2) failures.push(`customer preview nav should be 2 items, got ${customerNav}`);
 if (staffNavAfter !== 6) failures.push(`nav after switching back should be 6 items, got ${staffNavAfter}`);
+if (dupNames.length > 0) failures.push(`duplicate product cards: ${dupNames.join(', ')}`);
+if (priceM === priceL) failures.push(`size chip should change the displayed price (M: ${priceM}, L: ${priceL})`);
 if (failures.length) {
   console.error('VERIFICATION FAILED:', failures.join(' / '));
   process.exit(1);

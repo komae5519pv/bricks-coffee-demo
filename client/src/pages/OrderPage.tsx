@@ -16,6 +16,70 @@ interface CartLine {
 
 const STORE_KEY = 'daiwt-coffee-store';
 
+const SIZE_ORDER = ['S', 'M', 'L', 'N/A'];
+
+interface ProductGroup {
+  item_key: string;
+  sizes: MenuItem[];
+}
+
+/** Group SKU-level rows into one card per product (item_key), sizes sorted. */
+function groupByItemKey(menu: MenuItem[]): ProductGroup[] {
+  const map = new Map<string, MenuItem[]>();
+  for (const item of menu) {
+    const arr = map.get(item.item_key) ?? [];
+    arr.push(item);
+    map.set(item.item_key, arr);
+  }
+  return [...map.entries()].map(([item_key, sizes]) => ({
+    item_key,
+    sizes: sizes.sort((a, b) => SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size)),
+  }));
+}
+
+/**
+ * One product per card. Sizes are chips inside the card (カテゴリチップと
+ * 同じデザイン言語); the price follows the selected size and 追加 puts that
+ * size's SKU into the cart (cart stays SKU-based, unchanged).
+ */
+function ProductCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: MenuItem) => void }) {
+  const defaultSku = (group.sizes.find((s) => s.size === 'M') ?? group.sizes[0]).sku;
+  const [sku, setSku] = useState(defaultSku);
+  const current = group.sizes.find((s) => s.sku === sku) ?? group.sizes[0];
+  return (
+    <Card className="flex flex-col overflow-hidden">
+      <CardContent className="p-4 flex flex-col gap-2 flex-1">
+        <MenuImage item={current} width={400} className="-mx-4 -mt-4 mb-1" imgClassName="aspect-[16/9]" />
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="font-medium text-sm">{current.item_name}</div>
+            <div className="text-xs text-muted-foreground">{current.category}</div>
+          </div>
+          <div className="font-semibold text-sm whitespace-nowrap">{fmtPrice(current.price, current.currency)}</div>
+        </div>
+        <p className="text-xs text-muted-foreground line-clamp-2 flex-1">{current.description}</p>
+        {group.sizes.length > 1 && (
+          <div className="flex gap-1">
+            {group.sizes.map((s) => (
+              <Button
+                key={s.sku}
+                size="sm"
+                variant={s.sku === sku ? 'default' : 'outline'}
+                onClick={() => setSku(s.sku)}
+              >
+                {s.size}
+              </Button>
+            ))}
+          </div>
+        )}
+        <Button size="sm" variant="outline" onClick={() => onAdd(current)}>
+          <Plus className="h-4 w-4 mr-1" /> 追加
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function OrderPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>(() => localStorage.getItem(STORE_KEY) ?? '');
@@ -64,6 +128,7 @@ export function OrderPage() {
   }, [loadMenu]);
 
   const store = stores.find((s) => s.store_id === storeId);
+  const groups = useMemo(() => groupByItemKey(menu), [menu]);
 
   const addToCart = (item: MenuItem) => {
     setCart((prev) => {
@@ -161,23 +226,8 @@ export function OrderPage() {
           <p className="text-sm text-muted-foreground">該当するメニューがありません</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {menu.map((item) => (
-              <Card key={item.sku} className="flex flex-col overflow-hidden">
-                <CardContent className="p-4 flex flex-col gap-2 flex-1">
-                  <MenuImage item={item} width={400} className="-mx-4 -mt-4 mb-1" imgClassName="aspect-[16/9]" />
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-medium text-sm">{item.item_name}</div>
-                      <div className="text-xs text-muted-foreground">{item.category}{item.size !== 'N/A' ? ` · ${item.size}` : ''}</div>
-                    </div>
-                    <div className="font-semibold text-sm whitespace-nowrap">{fmtPrice(item.price, item.currency)}</div>
-                  </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2 flex-1">{item.description}</p>
-                  <Button size="sm" variant="outline" onClick={() => addToCart(item)}>
-                    <Plus className="h-4 w-4 mr-1" /> 追加
-                  </Button>
-                </CardContent>
-              </Card>
+            {groups.map((g) => (
+              <ProductCard key={g.item_key} group={g} onAdd={addToCart} />
             ))}
           </div>
         )}
