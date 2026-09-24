@@ -73,6 +73,15 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
 
+  // tests/ are linted (syntax/style rules) but not type-aware rules: the
+  // platform build compiles tsconfig.server.json without @playwright/test
+  // installed (it is installed ad-hoc — see README), so tests stay OUT of
+  // every tsconfig and type-aware linting can't resolve the import.
+  {
+    files: ['tests/**/*.ts'],
+    ...tseslint.configs.disableTypeChecked,
+  },
+
   // Prettier config (must be last to override other formatting rules)
   prettier,
 
