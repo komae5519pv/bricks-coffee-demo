@@ -1,0 +1,29 @@
+{
+  "audited_at": "2026-09-25",
+  "method": "全48商品画像を .image-audit/ にダウンロードし1枚ずつ目視 (tools/audit_images.mjs で再現可能)",
+  "verdicts": {
+    "contaminated": {
+      "CAFE": "Califia Farms OAT BARISTA BLEND のカートンが中央に大きく写っている",
+      "CARM": "NESCAFÉ Caramel Macchiato の缶が全面 (ユーザー指摘件)",
+      "OATL": "OATLY! のカートンがラテの横に大きく写っている",
+      "COLD": "EARTH COFFEE のラベル+ロゴ入りボトル",
+      "NITR": "NITRO BLACK COFFEE 印刷の缶製品 (パッケージ品でテーマ外でもある)",
+      "YUZU": "カップに 'Ola Cafe' のカフェ名プリント",
+      "SAKU": "Arizona Green Tea の缶 (縦ロゴ大)",
+      "FRAC": "Starbucks カップ (サイレンロゴ)",
+      "FRAM": "Starbucks カップ (サイレンロゴ)",
+      "SALAD": "背景に緑茶ボトル (TEAP...) とジュースパックが写り込み"
+    },
+    "content_mismatch": {
+      "HOJI": "ソフトクリーム (ほうじ茶ラテでない)",
+      "GING": "スムージー2杯 (ジンジャーブレッドラテでない)",
+      "MANG": "赤いホットラテ (マンゴークーラーでない)",
+      "VEGE": "餃子の皿 (フォカッチャでない)"
+    },
+    "swapped_no_api": {
+      "CROI<->PAIN": "CROI.jpg はパン・オ・ショコラ、PAIN.jpg はクロワッサンが写っていたため割当を入替 (API 消費なし)"
+    },
+    "ok_count": 33,
+    "notes": "TERI は野菜パニーニ寄りだがチキンサンドとして許容。IMTC の 'I LOVE YOU SO MATCHA' ナプキンはパロディ文言でブランドではないため OK"
+  }
+}
