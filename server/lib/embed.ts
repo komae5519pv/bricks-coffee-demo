@@ -28,7 +28,13 @@ export async function embedTexts(
     throw new Error(`embedding endpoint error (${res.status}): ${res.message}`);
   }
   const body = res.data as EmbeddingsResponse;
-  const out = (body.data ?? []).map((d) => d.embedding ?? []);
+  if (!Array.isArray(body.data)) {
+    // diagnostic: surface the real envelope shape instead of a bare TypeError
+    throw new Error(
+      `embedding endpoint returned non-array data. shape=${JSON.stringify(res.data)?.slice(0, 300)}`,
+    );
+  }
+  const out = body.data.map((d) => d.embedding ?? []);
   if (out.length !== texts.length || out.some((e) => e.length !== EMBEDDING_DIMS)) {
     throw new Error(
       `embedding endpoint returned ${out.length} vectors for ${texts.length} inputs`,
