@@ -2,10 +2,10 @@
 # daiwt-coffee-shop — 環境パラメータの単一ソース (single source of truth)
 #
 # カタログ/スキーマ/Lakebase/LLM/埋め込み/warehouse/Genie スペース ID はすべて
-# ここの variables に集約する。アプリ実行時に必要な値は tools/render_app_yaml.py
+# ここの variables に集約する。アプリ実行時に必要な値は tools/render_app_yaml.mjs
 # がこのファイルから app.yaml を再生成して注入する (app.yaml を直接編集しない)。
 #
-#   python3 tools/render_app_yaml.py          # app.yaml 再生成
+#   npm run render:appyaml                    # app.yaml 再生成
 #   databricks bundle validate --profile fevm-konomi-demo
 #   databricks bundle deploy   --profile fevm-konomi-demo
 # =============================================================================
@@ -21,7 +21,7 @@ variables:
   warehouse_id:
     description: SQL warehouse used for Delta-side status queries and the Genie space
   genie_space_id:
-    description: Genie space ID over the synced Delta tables (filled after tools/create_genie_space.py)
+    description: Genie space ID over the synced Delta tables (fill after `databricks genie create-space`; see README 初回セットアップ)
     default: ""
   # --- Lakebase (OLTP 側) ---
   postgres_project:

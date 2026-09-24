@@ -54,7 +54,9 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
 2. **AI バリスタに注文** — 「東京駅前店でアイスコーヒーのMを1つ」→ 確認 → **承認ゲート**を承認。
    channel=chat で Lakebase に書き込まれる。アレルギーを伝えると save_preference の提案→保存も見せられる。
 3. **CDC のライブ感** — ステータスページの「Lakebase → Delta レプリケーション遅延」が
-   0〜数秒であること、wal2delta が STREAMING であることを見せる(実測 0.002〜0.6秒)。
+   0〜数秒であること、wal2delta が STREAMING であることを見せる(定常の実測 0.002〜0.6秒)。
+   なお CDF config 作成直後の初回スナップショットや、型変更による resnapshot 直後は
+   分単位かかる場合がある(実績: 初回の manual 注文が resnapshot 反映まで約9分)。
 4. **Genie で分析** — Genie スペースで「過去の注文履歴を見せて」→「ライブ注文の最新を見せて」。
    さっき入れた注文がもう Delta 経由で見えることを確認。
 5. **嗜好を踏まえた提案** — 「TYO001 で私におすすめを提案して」→ customer_preferences の
