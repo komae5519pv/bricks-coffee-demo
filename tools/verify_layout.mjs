@@ -55,8 +55,8 @@ const atBottom = await page.evaluate(() => {
   const barBg = getComputedStyle(document.querySelector('.sticky.top-0') ?? document.body).backgroundColor;
   const opaque = barBg !== 'rgba(0, 0, 0, 0)' && barBg !== 'transparent';
   return {
-    cartVisible: [...document.querySelectorAll('*')].some(
-      (e) => e.textContent === 'カート' && e.getBoundingClientRect().top < innerHeight && e.getBoundingClientRect().bottom > 0,
+    cartVisible: [...document.querySelectorAll('div')].some(
+      (e) => e.textContent.trim().startsWith('カート') && e.getBoundingClientRect().top < innerHeight && e.getBoundingClientRect().bottom > 0,
     ),
     chipVisible: visible('button'),
     chipRect: [...document.querySelectorAll('button')].find((b) => b.textContent === 'エスプレッソ')?.getBoundingClientRect().top ?? null,
