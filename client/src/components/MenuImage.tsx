@@ -10,11 +10,15 @@ export function MenuImage({
   item,
   width,
   className = '',
+  imgClassName = '',
   creditVariant = 'overlay',
 }: {
   item: MenuItem;
   width: number;
+  /** outer wrapper classes (layout/margins) */
   className?: string;
+  /** inner image box classes (sizing, e.g. aspect-[16/9] or h-14 w-24) */
+  imgClassName?: string;
   creditVariant?: 'overlay' | 'inline';
 }) {
   const [failed, setFailed] = useState(false);
@@ -22,7 +26,7 @@ export function MenuImage({
   if (!src || failed) return null;
   return (
     <div className={className}>
-      <div className="relative h-full w-full overflow-hidden rounded bg-muted">
+      <div className={`relative overflow-hidden rounded bg-muted ${imgClassName}`}>
         <img
           src={src}
           alt={item.item_name}

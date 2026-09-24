@@ -164,7 +164,7 @@ export function OrderPage() {
             {menu.map((item) => (
               <Card key={item.sku} className="flex flex-col overflow-hidden">
                 <CardContent className="p-4 flex flex-col gap-2 flex-1">
-                  <MenuImage item={item} width={400} className="-mx-4 -mt-4 mb-1 aspect-[16/9]" />
+                  <MenuImage item={item} width={400} className="-mx-4 -mt-4 mb-1" imgClassName="aspect-[16/9]" />
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="font-medium text-sm">{item.item_name}</div>

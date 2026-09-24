@@ -239,7 +239,7 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
               {items.map((item) => (
                 <tr key={item.sku} className="border-t hover:bg-muted/30">
                   <td className="p-2">
-                    <MenuImage item={item} width={200} className="h-10 w-14" creditVariant="inline" />
+                    <MenuImage item={item} width={200} className="w-24" imgClassName="h-14 w-24" creditVariant="inline" />
                   </td>
                   <td className="p-2 font-mono text-xs">{item.sku}</td>
                   <td className="p-2">{item.item_name}</td>
