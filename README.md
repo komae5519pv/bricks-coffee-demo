@@ -47,6 +47,22 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
 型変更は CDC の resnapshot を引くので、**resnapshot 後は Delta 側ビューを CREATE OR REPLACE で
 作り直すこと**(tools/setup_delta.py を再実行すればよい)。
 
+## 商品画像 (Unsplash)
+
+- 注文タブのメニューカードに商品写真を表示。画像は Unsplash CDN (images.unsplash.com) への
+  **hotlink のみ**(再ホスト禁止のため画像ファイルはリポジトリ/Volume に保存しない)。
+  サイズ調整は imgix パラメータ(`?w=400&q=80&auto=format&fit=crop`)。lazy loading 付き。
+- 各画像に `Photo by {撮影者} on Unsplash` のクレジットをカード隅に小さく表示
+  (撮影者ページ・Unsplash への utm_source 付きリンク)。
+- 仕組み: `tools/fetch_unsplash_images.mjs` が**初回1回だけ** Unsplash API を叩き
+  (デモ枠 50 req/時 → 16 requests で完結)、カテゴリ別画像プール(8カテゴリ×5枚)を
+  `server/seed/menu_images.json` に保存。アプリは起動時にこの JSON から各 SKU に
+  FNV-1a ハッシュで確定的に画像を割り当て `menu_items` の4カラムに保存する
+  (image_url / image_photographer / image_photographer_url / image_unsplash_url)。
+  **アプリ実行時は API を叩かない**。管理画面からの新規メニューにもカテゴリプールから自動割当。
+- 再取得: 自分の Unsplash Access Key を `~/.config/daiwt-coffee-shop/unsplash_access_key`
+  に置いて `node tools/fetch_unsplash_images.mjs` を実行(キーは絶対にリポジトリに入れない)。
+
 ## デモ台本 (5ステップ)
 
 1. **アプリで注文** — 注文する → 商品をカートに入れて注文。「マイ注文」に即反映(Lakebase)。
