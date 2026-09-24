@@ -316,6 +316,10 @@ DO $$
 BEGIN
   IF (SELECT data_type FROM information_schema.columns
       WHERE table_schema = 'cofee_shop' AND table_name = 'orders' AND column_name = 'id') = 'uuid' THEN
+    -- RLS policies reference the id columns; the RLS step right after this
+    -- migration recreates them (DROP POLICY IF EXISTS + CREATE POLICY).
+    DROP POLICY IF EXISTS orders_owner_or_staff ON cofee_shop.orders;
+    DROP POLICY IF EXISTS order_items_owner_or_staff ON cofee_shop.order_items;
     ALTER TABLE cofee_shop.order_items DROP CONSTRAINT order_items_order_id_fkey;
     ALTER TABLE cofee_shop.orders ALTER COLUMN id TYPE text USING id::text;
     ALTER TABLE cofee_shop.orders ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
