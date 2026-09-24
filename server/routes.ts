@@ -12,6 +12,7 @@ import type { AppHandle } from './server';
 import type { EmbeddingsInvoker } from './lib/embed';
 import { searchMenu, priceCart, insertOrder, reembedItems, type DbLike } from './lib/menu';
 import { getDeltaSyncStatus, getLakebaseStatus } from './lib/status';
+import { pickImage } from './lib/images';
 
 export interface OrderRow {
   id: string;
@@ -481,12 +482,19 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
       }
       const d = parsed.data;
       const sku = `${d.store_id}-${d.item_key}-${d.size.replace('/', '')}`;
+      // New items get an image from their category pool (deterministic).
+      const img = pickImage(d.category, sku);
       try {
         const { rows, rowCount } = await userDb(req).query(
           `INSERT INTO cofee_shop.menu_items
-             (sku, store_id, item_key, item_name, category, size, price, currency, description, active)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING sku`,
-          [sku, d.store_id, d.item_key, d.item_name, d.category, d.size, d.price, d.currency, d.description, d.active],
+             (sku, store_id, item_key, item_name, category, size, price, currency, description, active,
+              image_url, image_photographer, image_photographer_url, image_unsplash_url)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING sku`,
+          [
+            sku, d.store_id, d.item_key, d.item_name, d.category, d.size, d.price, d.currency,
+            d.description, d.active,
+            img?.url ?? null, img?.photographer ?? null, img?.photographer_url ?? null, img?.unsplash_url ?? null,
+          ],
         );
         if (!rowCount || rows.length === 0) {
           res.status(403).json({ error: 'メニュー作成権限がありません(その店舗のスタッフのみ)' });

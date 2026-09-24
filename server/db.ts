@@ -12,6 +12,7 @@
  */
 import { loadSeed } from './seed/load';
 import { embedTexts, menuEmbeddingText, toVectorLiteral, type EmbeddingsInvoker } from './lib/embed';
+import { backfillMenuImages } from './lib/images';
 
 export interface BootstrapDb {
   query<T = any>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
@@ -41,6 +42,11 @@ CREATE TABLE IF NOT EXISTS cofee_shop.menu_items (
   description TEXT NOT NULL DEFAULT '',
   active      BOOLEAN NOT NULL DEFAULT true,
   embedding   vector(1024),
+  -- Unsplash hotlink + attribution (see server/lib/images.ts; NULL until assigned)
+  image_url              TEXT,
+  image_photographer     TEXT,
+  image_photographer_url TEXT,
+  image_unsplash_url     TEXT,
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -330,6 +336,17 @@ BEGIN
 END $$;
 `;
 
+/**
+ * Image columns for databases created before menu photos existed.
+ * ADD COLUMN IF NOT EXISTS is idempotent; runs as the app SP (table owner).
+ */
+const IMAGE_COLUMNS_MIGRATION = `
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS image_photographer TEXT;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS image_photographer_url TEXT;
+ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS image_unsplash_url TEXT;
+`;
+
 /** Run once at startup, before the server accepts requests. */
 export async function initializeDatabase(db: BootstrapDb, serving: EmbeddingsInvoker): Promise<void> {
   await db.query('CREATE SCHEMA IF NOT EXISTS cofee_shop');
@@ -341,6 +358,8 @@ export async function initializeDatabase(db: BootstrapDb, serving: EmbeddingsInv
   await db.query(STAFF_SEED);
   await db.query(PREFERENCES_SEED);
   await db.query(CDC_REPLICA_IDENTITY);
+  await db.query(IMAGE_COLUMNS_MIGRATION);
+  await backfillMenuImages(db);
   await backfillEmbeddings(db, serving);
   await db.query(HNSW_INDEX);
 }

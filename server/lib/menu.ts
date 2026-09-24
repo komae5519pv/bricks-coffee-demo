@@ -31,7 +31,13 @@ export interface MenuRow {
   description: string;
   active?: boolean;
   distance?: number;
+  image_url?: string | null;
+  image_photographer?: string | null;
+  image_photographer_url?: string | null;
+  image_unsplash_url?: string | null;
 }
+
+const IMAGE_COLS = ', image_url, image_photographer, image_photographer_url, image_unsplash_url';
 
 export interface MenuSearchFilters {
   store_id: string;
@@ -65,7 +71,7 @@ export async function searchMenu(
       const [vec] = await embedTexts(serving, [f.query]);
       const { rows } = await db.query<MenuRow>(
         `SELECT sku, store_id, item_key, item_name, category, size, price::text,
-                currency, description, (embedding <=> $1::vector) AS distance
+                currency, description, (embedding <=> $1::vector) AS distance${IMAGE_COLS}
          FROM cofee_shop.menu_items
          WHERE store_id = $2 ${activeCond} AND embedding IS NOT NULL ${FILTER_SQL}
          ORDER BY embedding <=> $1::vector
@@ -80,7 +86,7 @@ export async function searchMenu(
   const pattern = f.query ? `%${f.query}%` : '%';
   const { rows } = await db.query<MenuRow>(
     `SELECT sku, store_id, item_key, item_name, category, size, price::text,
-            currency, description
+            currency, description${IMAGE_COLS}
      FROM cofee_shop.menu_items
      WHERE store_id = $2 ${activeCond}
        AND (item_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1) ${FILTER_SQL}
