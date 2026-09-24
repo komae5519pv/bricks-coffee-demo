@@ -218,9 +218,12 @@ export const barista = createAgent({
             limit: 50,
           });
           const pick = (cats: string[]) => {
+            // drinks are S/M/L (prefer M); foods are all N/A size
             const byKey = new Map<string, (typeof rows)[number]>();
             for (const r of rows) {
-              if (cats.includes(r.category) && r.size === 'M' && !byKey.has(r.item_key)) byKey.set(r.item_key, r);
+              if (!cats.includes(r.category)) continue;
+              if (r.size === 'N/A' && !byKey.has(r.item_key)) byKey.set(r.item_key, r);
+              if (r.size === 'M') byKey.set(r.item_key, r); // M wins over N/A for drinks
             }
             return [...byKey.values()].sort(
               (a, b) => Number(b.is_classic) - Number(a.is_classic) || (a.calories_kcal ?? 0) - (b.calories_kcal ?? 0),
