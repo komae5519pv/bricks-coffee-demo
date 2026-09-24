@@ -409,7 +409,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
     app.get('/api/status', async (req: Request, res: Response) => {
       try {
         const lakebase = await getLakebaseStatus(spDb);
-        const delta = await getDeltaSyncStatus(lakebase.latest_order?.created_at ?? null);
+        const delta = await getDeltaSyncStatus();
         const workspaceHost = (process.env.DATABRICKS_HOST ?? '')
           .replace(/\/$/, '')
           .replace(/^(?!https?:\/\/)/, 'https://');

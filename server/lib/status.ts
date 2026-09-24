@@ -38,7 +38,6 @@ export interface LakebaseStatus {
     created_at: string;
     channel: string;
     status: string;
-    customer_name: string;
   } | null;
   wal2delta_tables?: unknown[] | null;
 }
@@ -79,19 +78,23 @@ async function runStatement(statement: string): Promise<(string | null)[][]> {
   return (resp.result?.data_array ?? []) as (string | null)[][];
 }
 
-export async function getDeltaSyncStatus(lakebaseLatestOrderCreatedAt: string | null): Promise<DeltaSyncStatus> {
+export async function getDeltaSyncStatus(): Promise<DeltaSyncStatus> {
   const catalog = process.env.COFFEE_CATALOG ?? '';
   const schema = process.env.COFFEE_SCHEMA ?? '';
   try {
+    // True replication delay for the newest change: when the CDC pipeline
+    // materialized it (_timestamp) minus when it was committed in Lakebase
+    // (created_at). (Comparing Lakebase-now vs Delta-now would always be ~0.)
     const rows = await runStatement(
-      `SELECT CAST(count(*) AS STRING), CAST(max(_timestamp) AS STRING), CAST(max(created_at) AS STRING) FROM ${catalog}.${schema}.lb_orders_history`,
+      `SELECT CAST(count(*) AS STRING),
+              CAST(max(created_at) AS STRING),
+              CAST(max_by(_timestamp, _pg_lsn) AS STRING)
+       FROM ${catalog}.${schema}.lb_orders_history`,
     );
-    const [count, lastChange, lastCreated] = rows[0] ?? ['0', null, null];
+    const [count, lastCreated, lastSynced] = rows[0] ?? ['0', null, null];
     let lag: number | null = null;
-    if (lakebaseLatestOrderCreatedAt && lastCreated) {
-      lag = Math.round(
-        (new Date(lastCreated).getTime() - new Date(lakebaseLatestOrderCreatedAt).getTime()) / 1000,
-      );
+    if (lastCreated && lastSynced) {
+      lag = Math.round(((new Date(lastSynced).getTime() - new Date(lastCreated).getTime()) / 1000) * 1000) / 1000;
     }
     return {
       ok: true,
@@ -99,7 +102,7 @@ export async function getDeltaSyncStatus(lakebaseLatestOrderCreatedAt: string | 
       schema,
       warehouse_id: process.env.DATABRICKS_WAREHOUSE_ID,
       lb_orders_history_rows: count ?? '0',
-      delta_last_change_at: lastChange,
+      delta_last_change_at: lastSynced,
       delta_last_order_created_at: lastCreated,
       lag_seconds: lag,
     };
@@ -119,9 +122,8 @@ export async function getLakebaseStatus(spDb: DbLike): Promise<LakebaseStatus> {
       created_at: string;
       channel: string;
       status: string;
-      customer_name: string;
     }>(
-      'SELECT id, created_at::text, channel, status, customer_name FROM cofee_shop.orders ORDER BY created_at DESC LIMIT 1',
+      'SELECT id, created_at::text, channel, status FROM cofee_shop.orders ORDER BY created_at DESC LIMIT 1',
     );
     // wal2delta exists only after Lakehouse Sync has been enabled on the branch.
     let wal2delta: unknown[] | null = null;

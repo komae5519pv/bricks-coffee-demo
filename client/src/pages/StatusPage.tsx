@@ -183,9 +183,11 @@ export function StatusPage() {
             <Row label="Delta 側 最新注文時刻" value={data?.delta_sync.delta_last_order_created_at ?? 'まだ無し'} mono />
             <Row label="Delta 側 最終同期時刻" value={data?.delta_sync.delta_last_change_at ?? 'まだ無し'} mono />
             <div className="mt-2 rounded-md bg-muted/40 p-3 text-center">
-              <div className="text-xs text-muted-foreground">Lakebase → Delta レプリケーション遅延</div>
+              <div className="text-xs text-muted-foreground">
+                Lakebase → Delta レプリケーション遅延 (最新変更の実測: 反映時刻 − コミット時刻)
+              </div>
               <div className="text-3xl font-bold">
-                {lag === null || lag === undefined ? '-' : lag <= 0 ? '< 1' : lag}
+                {lag === null || lag === undefined ? '-' : lag < 1 ? lag.toFixed(3) : lag.toFixed(1)}
                 {lag !== null && lag !== undefined && <span className="text-base font-normal"> 秒</span>}
               </div>
             </div>

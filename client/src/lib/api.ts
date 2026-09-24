@@ -115,7 +115,6 @@ export interface StatusResponse {
       created_at: string;
       channel: string;
       status: string;
-      customer_name: string;
     } | null;
     wal2delta_tables?: unknown[] | null;
   };
