@@ -22,20 +22,15 @@ const appkit = await createApp({
     server(),
   ],
   async onPluginsReady(handle) {
-    /** Uniform invoker for the embeddings alias, used by bootstrap + routes. */
+    /**
+     * Uniform invoker for the embeddings alias, used by bootstrap + routes.
+     * The serving plugin's invoke() already returns the { ok, data | error }
+     * envelope that EmbeddingsInvoker expects — pass it through unchanged
+     * (wrapping it again nests the body one level too deep).
+     */
     const embeddings: EmbeddingsInvoker = {
-      invoke: async (_alias, body) => {
-        try {
-          const data = await handle.serving('embeddings').invoke(body);
-          return { ok: true as const, data };
-        } catch (e) {
-          return {
-            ok: false as const,
-            status: 500,
-            message: e instanceof Error ? e.message : String(e),
-          };
-        }
-      },
+      invoke: (_alias, body) =>
+        handle.serving('embeddings').invoke(body) as ReturnType<EmbeddingsInvoker['invoke']>,
     };
     const spDb = {
       query: async <T = any>(t: string, v?: unknown[]) => {
