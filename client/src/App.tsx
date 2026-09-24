@@ -95,7 +95,10 @@ function Layout() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b px-4 md:px-6 py-3 flex items-center gap-4">
+      {/* Global header: sticky on every page (h-14 = 56px; the order tab's
+          sticky filter bar offsets itself by this height via top-14).
+          z-40 keeps it above content but below the mobile Sheet overlay. */}
+      <header className="sticky top-0 z-40 bg-background border-b px-4 md:px-6 h-14 flex items-center gap-4">
         <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <Coffee className="h-5 w-5" /> BRICKS COFFEE
         </h1>

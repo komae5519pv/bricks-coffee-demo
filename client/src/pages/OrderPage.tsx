@@ -159,7 +159,7 @@ export function OrderPage() {
         {/* Sticky filter bar: store selector, NL search, category chips stay
             operable while the menu grid scrolls (opaque bg so cards don't
             show through). */}
-        <div className="sticky top-0 z-10 -mx-4 md:-mx-6 px-4 md:px-6 pt-1 pb-3 space-y-3 bg-background border-b border-border/60">
+        <div className="sticky top-14 z-30 -mx-4 md:-mx-6 px-4 md:px-6 pt-1 pb-3 space-y-3 bg-background border-b border-border/60">
         <div className="flex flex-wrap items-center gap-3">
           <select
             className="h-9 rounded-md border bg-background px-3 text-sm"
@@ -220,7 +220,7 @@ export function OrderPage() {
       {/* Right column: cart + chat stick to the viewport on desktop. Cart
           keeps its natural height (internal scroll when long), the chat gets
           the remaining height with its own internal scroll. */}
-      <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:flex lg:max-h-[calc(100vh-2rem)] lg:flex-col">
+      <div className="space-y-4 lg:sticky lg:top-[4.5rem] lg:self-start lg:flex lg:max-h-[calc(100vh-5.5rem)] lg:flex-col">
         <Card className="lg:shrink-0">
           <CardContent className="p-4 space-y-3 lg:max-h-[45vh] lg:overflow-y-auto">
             <div className="flex items-center gap-2 font-medium">
