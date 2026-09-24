@@ -17,11 +17,11 @@
       "source_query": "pour over coffee brewing"
     },
     "CAFE": {
-      "url": "https://images.unsplash.com/photo-1576343209181-360ef7d9ad5c?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Y2FmZSUyMGF1JTIwbGFpdCUyMGNvZmZlZSUyMG1pbGt8ZW58MXwwfHx8MTc5MDI1Mzg1OXww&ixlib=rb-4.1.0",
-      "photographer": "Kaffee Meister",
-      "photographer_url": "https://unsplash.com/@kaffeemeister?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/cup-of-latte-beside-oat-barista-box-SAsyPsQAim8?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "cafe au lait coffee milk"
+      "url": "https://images.unsplash.com/photo-1718605598745-569f2a41bea0?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8M3x8Y2FmZSUyMGF1JTIwbGFpdCUyMGdsYXNzJTIwY29mZmVlJTIwbWlsa3xlbnwxfDB8fHwxNzkwMjYyNzMzfDA&ixlib=rb-4.1.0",
+      "photographer": "Jakub Żerdzicki",
+      "photographer_url": "https://unsplash.com/@jakubzerdzicki?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-cup-of-coffee-sitting-on-top-of-a-wooden-table-dThJOnuWE3s?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "cafe au lait glass coffee milk"
     },
     "AMER": {
       "url": "https://images.unsplash.com/photo-1630783098843-956335ee5275?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8YW1lcmljYW5vJTIwYmxhY2slMjBjb2ZmZWUlMjBjdXB8ZW58MXwwfHx8MTc5MDI1Mzg2MHww&ixlib=rb-4.1.0",
@@ -73,18 +73,18 @@
       "source_query": "mocha coffee chocolate whipped cream"
     },
     "CARM": {
-      "url": "https://images.unsplash.com/photo-1644418662628-3b43fee90a15?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Y2FyYW1lbCUyMG1hY2NoaWF0b3xlbnwxfDB8fHwxNzkwMjUzODcxfDA&ixlib=rb-4.1.0",
-      "photographer": "Tegar Oakley",
-      "photographer_url": "https://unsplash.com/@tegaroakley?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/a-can-of-coffee-sitting-on-top-of-a-pile-of-coffee-beans-gLOMmXxmdFA?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "caramel macchiato"
+      "url": "https://images.unsplash.com/photo-1582054344255-10f748c17a9e?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8NHx8Y2FyYW1lbCUyMGxhdHRlJTIwZ2xhc3N8ZW58MXwwfHx8MTc5MDI2Mjg4MXww&ixlib=rb-4.1.0",
+      "photographer": "Daniela",
+      "photographer_url": "https://unsplash.com/@daniela_curly?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/person-holding-ice-cream-with-white-cream-on-clear-glass-mug-RKaG5aasouc?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "caramel latte glass"
     },
     "OATL": {
-      "url": "https://images.unsplash.com/photo-1574343193689-93e01f51291e?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8b2F0JTIwbWlsayUyMGxhdHRlfGVufDF8MHx8fDE3OTAyNTM4NzN8MA&ixlib=rb-4.1.0",
-      "photographer": "Madalyn Cox",
-      "photographer_url": "https://unsplash.com/@madalyncox?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/cup-of-coffee-beside-box-RVnDPsyiLEg?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "oat milk latte"
+      "url": "https://images.unsplash.com/photo-1676813904579-ef19f05f77c8?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8NHx8b2F0JTIwbGF0dGUlMjBnbGFzcyUyMGNvZmZlZXxlbnwxfDB8fHwxNzkwMjYyNzM5fDA&ixlib=rb-4.1.0",
+      "photographer": "K8",
+      "photographer_url": "https://unsplash.com/@_k8_?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-close-up-of-a-cup-of-coffee-on-a-saucer-i3ed9qGK_Rk?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "oat latte glass coffee"
     },
     "HONL": {
       "url": "https://images.unsplash.com/photo-1587462969622-b0d51d428f6d?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8aG9uZXklMjBsYXR0ZSUyMGNvZmZlZXxlbnwxfDB8fHwxNzkwMjUzODc0fDA&ixlib=rb-4.1.0",
@@ -101,11 +101,11 @@
       "source_query": "iced coffee glass"
     },
     "COLD": {
-      "url": "https://images.unsplash.com/photo-1678174472163-543b1704eb24?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Y29sZCUyMGJyZXclMjBjb2ZmZWUlMjBib3R0bGV8ZW58MXwwfHx8MTc5MDI1Mzg3N3ww&ixlib=rb-4.1.0",
-      "photographer": "Na sen",
-      "photographer_url": "https://unsplash.com/@nasen?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/a-bottle-of-syrup-sitting-on-top-of-a-wooden-table-3T0xFK7NpkY?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "cold brew coffee bottle"
+      "url": "https://images.unsplash.com/photo-1561641377-f7456d23aa9b?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8Mnx8Y29sZCUyMGJyZXclMjBjb2ZmZWUlMjBnbGFzcyUyMGljZXxlbnwxfDB8fHwxNzkwMjYyNzQzfDA&ixlib=rb-4.1.0",
+      "photographer": "Wade Austin Ellis",
+      "photographer_url": "https://unsplash.com/@wadeaustinellis?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/glass-cup-of-beverage-yN7prWLW7xg?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "cold brew coffee glass ice"
     },
     "CLDB": {
       "url": "https://images.unsplash.com/photo-1517959105821-eaf2591984ca?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8ZXNwcmVzc28lMjB0b25pYyUyMG9yYW5nZSUyMGNvZmZlZXxlbnwxfDB8fHwxNzkwMjUzODc5fDA&ixlib=rb-4.1.0",
@@ -129,11 +129,11 @@
       "source_query": "iced mocha coffee"
     },
     "NITR": {
-      "url": "https://images.unsplash.com/photo-1626868180657-a1240e21ba35?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8bml0cm8lMjBjb2xkJTIwYnJldyUyMGNvZmZlZXxlbnwxfDB8fHwxNzkwMjUzODgzfDA&ixlib=rb-4.1.0",
-      "photographer": "Dannie Sorum",
-      "photographer_url": "https://unsplash.com/@danjoso?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/black-and-white-coca-cola-zero-can--TnL1JFbcDs?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "nitro cold brew coffee"
+      "url": "https://images.unsplash.com/photo-1647182330711-8d57562f01f3?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8NHx8ZHJhZnQlMjBjb2ZmZWUlMjBnbGFzc3xlbnwxfDB8fHwxNzkwMjYyOTQ3fDA&ixlib=rb-4.1.0",
+      "photographer": "Branimir Petakov",
+      "photographer_url": "https://unsplash.com/@branpeta?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-glass-of-beer-sitting-on-top-of-a-wooden-table-ZBEroxt_SLQ?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "draft coffee glass"
     },
     "GTEN": {
       "url": "https://images.unsplash.com/photo-1606377695906-236fdfcef767?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8amFwYW5lc2UlMjBncmVlbiUyMHRlYSUyMHNlbmNoYXxlbnwxfDB8fHwxNzkwMjUzODg1fDA&ixlib=rb-4.1.0",
@@ -171,11 +171,11 @@
       "source_query": "chai latte spices"
     },
     "YUZU": {
-      "url": "https://images.unsplash.com/photo-1728777187089-1af2c5facff2?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8eXV6dSUyMGNpdHJ1cyUyMHRlYXxlbnwxfDB8fHwxNzkwMjUzODk0fDA&ixlib=rb-4.1.0",
-      "photographer": "Alimentos Fotogénicos",
-      "photographer_url": "https://unsplash.com/@alimentosfotogenicos?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/a-plastic-cup-with-a-drink-inside-of-it-B4DLPbBDwlA?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "yuzu citrus tea"
+      "url": "https://images.unsplash.com/photo-1535395155851-2088a2a94701?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8Mnx8Y2l0cm9uJTIwdGVhJTIwZ2xhc3N8ZW58MXwwfHx8MTc5MDI2Mjk4Nnww&ixlib=rb-4.1.0",
+      "photographer": "reyhaneh mehrnejad",
+      "photographer_url": "https://unsplash.com/@reyhanphotos?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/clear-glass-cup-beside-cookies-AZxyTjkz3-g?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "citron tea glass"
     },
     "PUMP": {
       "url": "https://images.unsplash.com/photo-1632584125454-f48693ec9861?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8cHVtcGtpbiUyMHNwaWNlJTIwbGF0dGV8ZW58MXwwfHx8MTc5MDI1Mzg5N3ww&ixlib=rb-4.1.0",
@@ -185,32 +185,32 @@
       "source_query": "pumpkin spice latte"
     },
     "GING": {
-      "url": "https://images.unsplash.com/photo-1461010083959-8a5727311252?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Z2luZ2VyYnJlYWQlMjBsYXR0ZSUyMGNocmlzdG1hc3xlbnwxfDB8fHwxNzkwMjUzODk4fDA&ixlib=rb-4.1.0",
-      "photographer": "Toa Heftiba",
-      "photographer_url": "https://unsplash.com/@heftiba?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/red-coffee-latte-on-white-ceramic-mug-WsDF95mSUsI?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "gingerbread latte christmas"
+      "url": "https://images.unsplash.com/photo-1514495021973-06719621b160?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Z2luZ2VyYnJlYWQlMjBsYXR0ZSUyMGNocmlzdG1hcyUyMGN1cHxlbnwxfDB8fHwxNzkwMjYyNzY1fDA&ixlib=rb-4.1.0",
+      "photographer": "Evelin Horvath",
+      "photographer_url": "https://unsplash.com/@eve_horvath?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/gingerbread-near-bowl-with-liquid-fL_kgRjUXCo?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "gingerbread latte christmas cup"
     },
     "MANG": {
-      "url": "https://images.unsplash.com/photo-1662130187270-a4d52c700eb6?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8bWFuZ28lMjBwYXNzaW9uZnJ1aXQlMjBzbW9vdGhpZXxlbnwxfDB8fHwxNzkwMjUzOTAwfDA&ixlib=rb-4.1.0",
-      "photographer": "Fanny Gustafsson",
-      "photographer_url": "https://unsplash.com/@fannygustafsson?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/a-group-of-different-colored-drinks-71z7eCLS4Uo?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "mango passionfruit smoothie"
+      "url": "https://images.unsplash.com/photo-1619898804188-e7bad4bd2127?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8bWFuZ28lMjBzbW9vdGhpZSUyMGdsYXNzJTIweWVsbG93JTIwZHJpbmt8ZW58MXwwfHx8MTc5MDI2Mjc3MHww&ixlib=rb-4.1.0",
+      "photographer": "Jyoti Singh",
+      "photographer_url": "https://unsplash.com/@econut?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/green-apple-beside-clear-drinking-glass-with-milk-cfo98H6h3tQ?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "mango smoothie glass yellow drink"
     },
     "FRAC": {
-      "url": "https://images.unsplash.com/photo-1592321675774-3de57f3ee0dc?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Y29mZmVlJTIwZnJhcHB1Y2Npbm8lMjB3aGlwcGVkJTIwY3JlYW18ZW58MXwwfHx8MTc5MDI1MzkwMXww&ixlib=rb-4.1.0",
-      "photographer": "Angelica Reyes",
-      "photographer_url": "https://unsplash.com/@angiereyes22?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/white-and-brown-starbucks-coffee-cup-on-brown-wooden-table-6xBvVSs2G8c?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "coffee frappuccino whipped cream"
+      "url": "https://images.unsplash.com/photo-1553741755-53af778aef6a?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8Mnx8Y29mZmVlJTIwZnJhcHBlJTIwZ2xhc3MlMjB3aGlwcGVkJTIwY3JlYW0lMjBob21lbWFkZXxlbnwxfDB8fHwxNzkwMjYyNzU3fDA&ixlib=rb-4.1.0",
+      "photographer": "Gabi Miranda",
+      "photographer_url": "https://unsplash.com/@gabimirandan?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/clear-drinking-glass-EDT3CpqeSVs?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "coffee frappe glass whipped cream homemade"
     },
     "FRAM": {
-      "url": "https://images.unsplash.com/photo-1599893876316-b633e2e5d4dd?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8bWF0Y2hhJTIwZnJhcHB1Y2Npbm98ZW58MXwwfHx8MTc5MDI1MzkwM3ww&ixlib=rb-4.1.0",
-      "photographer": "M. W",
-      "photographer_url": "https://unsplash.com/@mmw189?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/starbucks-coffee-cup-on-brown-wooden-table-PdpqO3jXHfs?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "matcha frappuccino"
+      "url": "https://images.unsplash.com/photo-1748466990753-dc200e7e0ace?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8NHx8bWF0Y2hhJTIwZnJhcHBlfGVufDF8MHx8fDE3OTAyNjMwNTJ8MA&ixlib=rb-4.1.0",
+      "photographer": "Nastia Petruk",
+      "photographer_url": "https://unsplash.com/@mineral_of_demon?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/two-latte-drinks-with-heart-shaped-foam-tnJGUKsPEe0?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "matcha frappe"
     },
     "FRAC2": {
       "url": "https://images.unsplash.com/photo-1579888071069-c107a6f79d82?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Y2FyYW1lbCUyMGZyYXBwdWNjaW5vfGVufDF8MHx8fDE3OTAyNTM5MDV8MA&ixlib=rb-4.1.0",
@@ -297,18 +297,18 @@
       "source_query": "teriyaki chicken sandwich"
     },
     "VEGE": {
-      "url": "https://images.unsplash.com/photo-1621852004158-f3bc188ace2d?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Z3JpbGxlZCUyMHZlZ2V0YWJsZSUyMGZvY2FjY2lhJTIwc2FuZHdpY2h8ZW58MXwwfHx8MTc5MDI1MzkyNXww&ixlib=rb-4.1.0",
-      "photographer": "jack shingai",
-      "photographer_url": "https://unsplash.com/@artevgen?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/sandwich-with-vegetable-on-brown-wooden-table-hdhWH1xoYwM?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "url": "https://images.unsplash.com/photo-1649305785246-a1d65e8bc078?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8M3x8Z3JpbGxlZCUyMHZlZ2V0YWJsZSUyMGZvY2FjY2lhJTIwc2FuZHdpY2h8ZW58MXwwfHx8MTc5MDI2Mjc3M3ww&ixlib=rb-4.1.0",
+      "photographer": "Tony Rocket",
+      "photographer_url": "https://unsplash.com/@tonyrocket?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-sandwich-on-a-plate-with-a-side-of-fries-T-Hzod2QRbs?utm_source=daiwt_coffee_shop&utm_medium=referral",
       "source_query": "grilled vegetable focaccia sandwich"
     },
     "SALAD": {
-      "url": "https://images.unsplash.com/photo-1605291535065-e1d52d2b264a?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Y2hpY2tlbiUyMGNhZXNhciUyMHNhbGFkfGVufDF8MHx8fDE3OTAyNTM5MjZ8MA&ixlib=rb-4.1.0",
-      "photographer": "logan jeffrey",
-      "photographer_url": "https://unsplash.com/@foodjetsexpress?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/vegetable-salad-on-white-ceramic-plate-1kOsQoehjZA?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "chicken caesar salad"
+      "url": "https://images.unsplash.com/photo-1746211224437-8340316b288d?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8Mnx8Y2Flc2FyJTIwc2FsYWQlMjBwbGF0ZXxlbnwxfDB8fHwxNzkwMjYyNzk1fDA&ixlib=rb-4.1.0",
+      "photographer": "Cliffer Rebelo",
+      "photographer_url": "https://unsplash.com/@cliffer14?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-delicious-caesar-salad-ready-to-be-eaten-_SUBifWXat0?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "caesar salad plate"
     },
     "ACAI": {
       "url": "https://images.unsplash.com/photo-1654923064926-be7e64267a31?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8YWNhaSUyMGJvd2wlMjBncmFub2xhJTIwZnJ1aXR8ZW58MXwwfHx8MTc5MDI1MzkyOHww&ixlib=rb-4.1.0",
@@ -318,18 +318,18 @@
       "source_query": "acai bowl granola fruit"
     },
     "HOJI": {
-      "url": "https://images.unsplash.com/photo-1657251631612-671d78ba32d4?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8aG9qaWNoYSUyMHRlYSUyMGphcGFufGVufDF8MHx8fDE3OTAyNTQwMzZ8MA&ixlib=rb-4.1.0",
-      "photographer": "Yuika Takamura",
-      "photographer_url": "https://unsplash.com/@blue_hamberts?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/a-close-up-of-a-hand-holding-a-green-pepper-OMwNzOert8U?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "hojicha tea japan"
+      "url": "https://images.unsplash.com/photo-1654263429989-79a3054a1509?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8NHx8aG9qaWNoYXxlbnwxfDB8fHwxNzkwMjYzMTM4fDA&ixlib=rb-4.1.0",
+      "photographer": "Aabir Ahammed",
+      "photographer_url": "https://unsplash.com/@aabir_ahammed?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-glass-cup-filled-with-liquid-next-to-a-pile-of-nuts-Si91SjNZR5k?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "hojicha"
     },
     "SAKU": {
-      "url": "https://images.unsplash.com/photo-1637706167581-2cbeeb116328?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8cGluayUyMHNha3VyYSUyMGRyaW5rfGVufDF8MHx8fDE3OTAyNTQwMzd8MA&ixlib=rb-4.1.0",
-      "photographer": "Z Graphica",
-      "photographer_url": "https://unsplash.com/@kiki_1323?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "unsplash_url": "https://unsplash.com/photos/a-can-of-green-tea-sitting-on-a-table-Q5rFQRm0Pj0?utm_source=daiwt_coffee_shop&utm_medium=referral",
-      "source_query": "pink sakura drink"
+      "url": "https://images.unsplash.com/photo-1657763889381-befa1a547b3f?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8cGluayUyMHNha3VyYSUyMGxhdHRlJTIwZHJpbmt8ZW58MXwwfHx8MTc5MDI2Mjc1Mnww&ixlib=rb-4.1.0",
+      "photographer": "Karly Jones",
+      "photographer_url": "https://unsplash.com/@earthtokarly?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "unsplash_url": "https://unsplash.com/photos/a-cup-of-ice-cream-dWGhtUj9-Q8?utm_source=daiwt_coffee_shop&utm_medium=referral",
+      "source_query": "pink sakura latte drink"
     },
     "CANN": {
       "url": "https://images.unsplash.com/photo-1769812343657-e0cce0999ea2?ixid=M3wxMDgxMDA1fDB8MXxzZWFyY2h8MXx8Y2FuZWxlJTIwZnJlbmNoJTIwcGFzdHJ5fGVufDF8MHx8fDE3OTAyNTQ4MjZ8MA&ixlib=rb-4.1.0",
@@ -636,5 +636,6 @@
         "source_query": "sandwich lunch plate"
       }
     ]
-  }
+  },
+  "audit_note": "2026-09-25 brand audit: 14 images replaced after visual review (tools/image_audit.json)"
 }

@@ -25,5 +25,11 @@
     },
     "ok_count": 33,
     "notes": "TERI は野菜パニーニ寄りだがチキンサンドとして許容。IMTC の 'I LOVE YOU SO MATCHA' ナプキンはパロディ文言でブランドではないため OK"
+  },
+  "resolution": {
+    "replaced": "contaminated 10 + content_mismatch 4 = 14 images replaced with brand-free, on-theme candidates (each re-verified visually before adoption; tools/apply_image_picks.mjs で適用・帰属リンクも再解決)",
+    "swapped": "CROI<->PAIN assignment corrected (no API)",
+    "untouched": "33 images kept as-is (no API spend)",
+    "post_check": "採用した候補ファイル自体を全件目視確認済(= 再取得後の確認)"
   }
 }
