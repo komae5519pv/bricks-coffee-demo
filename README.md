@@ -117,8 +117,18 @@ npm run lint            # eslint (0 errors)
 npm run lint:ast-grep   # appkit lint
 npm test                # vitest 単体テスト
 npm run build           # typecheck 込み
-# Playwright スモーク(要 npx playwright install): APP_URL=<app url> npx playwright test tests/smoke.spec.ts
+
+# Playwright スモーク (tests/smoke.spec.ts):
+npm i --no-save @playwright/test   # 注: package.json には意図的に未宣言(後述)
+npx playwright install chromium    # 初回のみ
+APP_URL=https://daiwt-coffee-shop-7474646087200844.aws.databricksapps.com npx playwright test tests/smoke.spec.ts
 ```
+
+**@playwright/test を package.json に宣言していない理由**: Databricks Apps のビルド環境
+(npm-proxy.dev.databricks.com 経由) が playwright-core の tarball 取得に 4 回連続で
+ETIMEDOUT となりデプロイが失敗したため(手元のネットワークからは 1.5 秒で取得可能=
+プラットフォーム側のプロキシ問題)。宣言するとデプロイが壊れるため、実行時に
+`npm i --no-save` で入れる運用。yaml だけは devDependencies に宣言済み。
 
 ## 既知の制限
 
