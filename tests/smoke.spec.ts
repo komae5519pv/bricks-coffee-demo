@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('home page loads with store selector and menu from Lakebase', async ({ page }) => {
-  await expect(page.getByRole('heading', { name: 'DAIWT Coffee' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'BRICKS COFFEE' })).toBeVisible();
   await expect(page.getByRole('link', { name: '注文する' })).toBeVisible();
   // store selector is populated from /api/stores
   await expect(page.locator('select').first()).toBeVisible({ timeout: 30000 });

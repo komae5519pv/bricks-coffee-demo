@@ -36,12 +36,13 @@ const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
 function NavLinks({
   className,
   linkClass,
-  me,
+  view,
   onClick,
 }: {
   className?: string;
   linkClass: NavLinkClassFn;
-  me: Me | null;
+  /** customer = 注文する/マイ注文 only; staff = 全項目 */
+  view: 'customer' | 'staff';
   onClick?: () => void;
 }) {
   return (
@@ -52,7 +53,7 @@ function NavLinks({
       <NavLink to="/orders" className={linkClass} onClick={onClick}>
         <ClipboardList className="h-4 w-4" /> マイ注文
       </NavLink>
-      {me?.is_staff && (
+      {view === 'staff' && (
         <>
           <NavLink to="/board" className={linkClass} onClick={onClick}>
             <ChefHat className="h-4 w-4" /> キッチンボード
@@ -60,14 +61,14 @@ function NavLinks({
           <NavLink to="/admin/menu" className={linkClass} onClick={onClick}>
             <Settings2 className="h-4 w-4" /> メニュー管理
           </NavLink>
+          <NavLink to="/history" className={linkClass} onClick={onClick}>
+            <BarChart3 className="h-4 w-4" /> 売上・履歴
+          </NavLink>
+          <NavLink to="/status" className={linkClass} onClick={onClick}>
+            <Activity className="h-4 w-4" /> ステータス
+          </NavLink>
         </>
       )}
-      <NavLink to="/history" className={linkClass} onClick={onClick}>
-        <BarChart3 className="h-4 w-4" /> 売上・履歴
-      </NavLink>
-      <NavLink to="/status" className={linkClass} onClick={onClick}>
-        <Activity className="h-4 w-4" /> ステータス
-      </NavLink>
     </nav>
   );
 }
@@ -76,6 +77,9 @@ function Layout() {
   const isMobile = useIsMobile();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
+  // デモ用表示切替: スタッフが「お客さん表示」をプレビューできる(表示だけ。
+  // 実際のロール・サーバー側の認可は変わらない)。
+  const [previewRole, setPreviewRole] = useState<'customer' | 'staff'>('staff');
 
   useEffect(() => {
     api.me().then(setMe).catch(() => setMe(null));
@@ -87,14 +91,39 @@ function Layout() {
     setMobileNavOpen(false);
   }
 
+  const navView: 'customer' | 'staff' = me?.is_staff ? previewRole : 'customer';
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b px-4 md:px-6 py-3 flex items-center gap-4">
         <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
-          <Coffee className="h-5 w-5" /> DAIWT Coffee
+          <Coffee className="h-5 w-5" /> BRICKS COFFEE
         </h1>
-        <NavLinks className="hidden md:flex gap-1" linkClass={navLinkClass} me={me} />
+        <NavLinks className="hidden md:flex gap-1" linkClass={navLinkClass} view={navView} />
         <div className="ml-auto flex items-center gap-3">
+          {me?.is_staff && (
+            <div
+              className="flex items-center rounded-md bg-muted p-0.5 text-xs"
+              title="デモ用表示切替(プレビュー。実際の権限は変わりません)"
+            >
+              <button
+                className={`px-2 py-1 rounded transition-colors ${
+                  previewRole === 'customer' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                }`}
+                onClick={() => setPreviewRole('customer')}
+              >
+                お客さん表示
+              </button>
+              <button
+                className={`px-2 py-1 rounded transition-colors ${
+                  previewRole === 'staff' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                }`}
+                onClick={() => setPreviewRole('staff')}
+              >
+                スタッフ表示
+              </button>
+            </div>
+          )}
           {me && (
             <span className="hidden md:inline text-xs text-muted-foreground">
               {me.email}
@@ -111,12 +140,12 @@ function Layout() {
               </Button>
               <SheetContent side="left">
                 <SheetHeader>
-                  <SheetTitle>DAIWT Coffee</SheetTitle>
+                  <SheetTitle>BRICKS COFFEE</SheetTitle>
                 </SheetHeader>
                 <NavLinks
                   className="flex flex-col gap-1"
                   linkClass={mobileNavLinkClass}
-                  me={me}
+                  view={navView}
                   onClick={() => setMobileNavOpen(false)}
                 />
               </SheetContent>
