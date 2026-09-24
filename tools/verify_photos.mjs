@@ -64,10 +64,10 @@ console.log('order tab:', JSON.stringify(order));
 // --- size consolidation: every product appears on exactly ONE card, and
 // size chips change the displayed price ---
 const cardNames = await page
-  .locator('.grid .font-medium.text-sm')
+  .locator('.grid.gap-3 div.font-medium.text-sm')
   .allTextContents();
 const dupNames = cardNames.filter((n, i) => cardNames.indexOf(n) !== i);
-const firstCard = page.locator('.grid > div').first();
+const firstCard = page.locator('.grid.gap-3 > div').first();
 const priceM = await firstCard.locator('div.font-semibold', { hasText: '¥' }).first().textContent();
 const lChip = firstCard.getByRole('button', { name: 'L', exact: true });
 let priceL = priceM;
