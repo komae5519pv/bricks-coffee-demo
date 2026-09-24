@@ -16,10 +16,9 @@ export default tseslint.config(
       '**/coverage/**',
       'client/dist/**',
       '**.databricks/**',
-      // generated types (appkit typegen) and non-TS tooling/tests
+      // generated types (appkit typegen) and non-TS tooling
       'shared/appkit-types/**',
       'tools/*.mjs',
-      'tests/**',
     ],
   },
 
