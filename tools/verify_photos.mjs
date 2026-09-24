@@ -40,7 +40,17 @@ async function imageStats() {
     const loaded = imgs.filter((i) => i.complete && i.naturalWidth > 0);
     const distinctSrc = new Set(imgs.map((i) => i.src));
     const credits = document.body.innerText.match(/Photo by .+ on Unsplash/g) ?? [];
-    return { imgs: imgs.length, loaded: loaded.length, distinctSrc: distinctSrc.size, credits: credits.length };
+    const text = document.body.innerText;
+    return {
+      imgs: imgs.length,
+      loaded: loaded.length,
+      distinctSrc: distinctSrc.size,
+      credits: credits.length,
+      hasYen: text.includes('¥'),
+      // legacy local-currency symbols must be gone from every surface
+      hasForeignCurrency: /A\$|US\$|£|€\d/.test(text),
+      hasJaCategory: ['ドリップコーヒー', 'エスプレッソ', 'ティー&抹茶'].some((c) => text.includes(c)),
+    };
   });
 }
 
@@ -68,6 +78,9 @@ await browser.close();
 const failures = [];
 if (order.imgs === 0 || order.loaded === 0 || order.credits === 0) failures.push('order tab: images or credits missing');
 if (admin.imgs === 0 || admin.loaded === 0 || admin.credits === 0) failures.push('admin menu: images or credits missing');
+if (!order.hasYen) failures.push('order tab: no ¥ price visible');
+if (order.hasForeignCurrency) failures.push('order tab: legacy currency symbol (A$/US$/£/€) still visible');
+if (!order.hasJaCategory) failures.push('order tab: Japanese category chip missing');
 if (failures.length) {
   console.error('VERIFICATION FAILED:', failures.join(' / '));
   process.exit(1);

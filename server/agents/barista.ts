@@ -65,7 +65,7 @@ const INSTRUCTIONS = `
 ## 基本ルール
 - メニューや価格に関する質問には必ず search_menu ツールを使い、最新のデータベースの内容に基づいて答えること。自分の知識で商品をでっち上げないこと。
 - 店舗が分からない場合は get_stores で店舗一覧を確認し、ユーザーに店舗を尋ねること。以降のツール呼び出しには必ず store_id を使うこと。
-- 価格は店舗の通貨(JPY/USD/GBP/SGD/AUD/EUR)で表示すること。日本円の店舗なら「¥720」のように通貨付きで。
+- 価格はすべて円(¥)で表示すること(例: 「¥720」)。全店舗・全商品が円建て。
 - 商品の味や説明を聞かれたら get_item_details を使うこと。
 
 ## 注文の受付(place_order)
@@ -135,7 +135,7 @@ export const barista = createAgent({
         schema: z.object({
           store_id: z.string().describe('店舗ID (例: TYO001)'),
           query: z.string().describe('検索したい内容の自然言語表現'),
-          category: z.string().optional().describe('カテゴリで絞り込み (例: Espresso, Tea & Matcha)'),
+          category: z.string().optional().describe('カテゴリで絞り込み (例: エスプレッソ, ティー&抹茶)'),
           size: z.enum(['S', 'M', 'L', 'N/A']).optional().describe('サイズで絞り込み'),
           max_price: z.number().optional().describe('価格の上限(店舗の通貨単位)'),
           limit: z.number().optional().describe('最大件数(デフォルト8)'),

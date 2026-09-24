@@ -55,7 +55,7 @@ TABLE_COMMENTS = {
     'historical_orders': '過去の注文履歴(シードデータ・行単位の注文明細)。分析用',
     'customer_preferences': '顧客の嗜好設定。user_email ごとの preference_key/preference_value(例: milk_allergy=true は牛乳アレルギー)。提案時は必ずこの嗜好を考慮すること',
     'stores': '店舗マスタ。12か国・通貨/ロケール付き',
-    'menu_items': '店舗別メニュー(SKU単位)。price は店舗通貨建て。active=true が販売中',
+    'menu_items': '店舗別メニュー(SKU単位)。price は円(整数)。active=true が販売中',
 }
 
 
