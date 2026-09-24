@@ -28,6 +28,69 @@ STORES = [
 
 # key, category, en, ja, en_desc, ja_desc, sizes, base USD, regions (None = global)
 B = 'Brewed Coffee'; E = 'Espresso'; C = 'Cold Brew & Iced'; T = 'Tea & Matcha'; S = 'Seasonal'; F = 'Frappé & Blended'; P = 'Pastry'; D = 'Sandwich & Food'
+
+# ---------------------------------------------------------------------------
+# Nutrition / allergen / tag master data (item_key level, values for size M).
+# (kcal, protein_g, fat_g, contains_milk, contains_egg, contains_wheat,
+#  contains_nuts, alt_milk_options, scenes, is_classic, is_new, is_seasonal,
+#  target_tags)
+# Values are realistic for a coffee chain (エスプレッソ ~10kcal、ラテM ~150kcal、
+# フラペL ~400kcal 台想定)。全店共通。
+# ---------------------------------------------------------------------------
+MILK = 'oat,almond,soy'
+BF, LU, SN = 'breakfast', 'lunch', 'snack'
+NUTRITION = {
+    'DRIP':  (5,   0.5, 0,   0,0,0,0, '',    f'{BF},{LU}', 1,0,0, 'business,health'),
+    'POUR':  (5,   0.5, 0,   0,0,0,0, '',    f'{BF},{LU}', 1,0,0, 'business,health'),
+    'CAFE':  (90,  4.0, 3.5, 1,0,0,0, MILK,  BF,          1,0,0, 'women'),
+    'AMER':  (10,  0.6, 0,   0,0,0,0, '',    f'{BF},{LU}', 1,0,0, 'business,health'),
+    'ESPR':  (10,  0.8, 0,   0,0,0,0, '',    f'{BF},{LU}', 1,0,0, 'business'),
+    'DOPP':  (25,  1.2, 1.0, 1,0,0,0, MILK,  BF,          0,0,0, 'business'),
+    'CAPU':  (120, 6.0, 4.5, 1,0,0,0, MILK,  BF,          1,0,0, 'women,business'),
+    'LATT':  (150, 7.0, 5.5, 1,0,0,0, MILK,  BF,          1,0,0, 'women'),
+    'FLAT':  (130, 6.0, 5.0, 1,0,0,0, MILK,  BF,          0,0,0, 'business'),
+    'MOCH':  (260, 8.0, 9.0, 1,0,0,0, MILK,  SN,          1,0,0, 'women,sweet'),
+    'CARM':  (240, 6.0, 8.0, 1,0,0,0, MILK,  SN,          1,0,0, 'women,sweet'),
+    'OATL':  (130, 3.0, 5.0, 0,0,0,1, '',    BF,          0,0,0, 'health,women'),
+    'HONL':  (210, 6.0, 5.0, 1,0,0,0, MILK,  BF,          0,0,0, 'women,sweet'),
+    'ICOF':  (60,  2.0, 2.0, 1,0,0,0, MILK,  f'{BF},{LU}',1,0,0, 'business,health'),
+    'COLD':  (5,   0.5, 0,   0,0,0,0, '',    f'{BF},{LU}',0,0,0, 'health,business'),
+    'CLDB':  (80,  0.5, 0,   0,0,0,0, '',    LU,          0,0,0, 'health'),
+    'ILAT':  (130, 6.0, 5.0, 1,0,0,0, MILK,  f'{BF},{LU}',1,0,0, 'women'),
+    'IMOC':  (250, 7.0, 9.0, 1,0,0,0, MILK,  SN,          0,0,0, 'women,sweet'),
+    'NITR':  (15,  1.0, 0,   0,0,0,0, '',    LU,          0,1,0, 'business,health'),
+    'GTEN':  (2,   0.3, 0,   0,0,0,0, '',    f'{BF},{SN}',1,0,0, 'health'),
+    'MTCH':  (200, 7.0, 6.0, 1,0,0,0, MILK,  SN,          1,0,0, 'women'),
+    'IMTC':  (190, 6.0, 5.0, 1,0,0,0, MILK,  SN,          0,0,0, 'women'),
+    'HOJI':  (120, 5.0, 4.5, 1,0,0,0, MILK,  SN,          0,0,0, 'women,health'),
+    'EARL':  (2,   0.3, 0,   0,0,0,0, '',    f'{BF},{SN}',1,0,0, 'health'),
+    'CHAI':  (180, 5.0, 6.0, 1,0,0,0, MILK,  SN,          0,0,0, 'women,sweet'),
+    'YUZU':  (60,  0.5, 0,   0,0,0,0, '',    SN,          0,1,0, 'health,women'),
+    'SAKU':  (250, 6.0, 8.0, 1,0,0,0, MILK,  SN,          0,0,1, 'women,sweet'),
+    'PUMP':  (290, 7.0, 9.0, 1,0,0,0, MILK,  SN,          0,0,1, 'women,sweet'),
+    'GING':  (300, 7.0, 10.0,1,0,0,0, MILK,  SN,          0,0,1, 'women,sweet'),
+    'MANG':  (180, 2.0, 0.5, 0,0,0,0, '',    f'{LU},{SN}',0,1,0, 'health,women'),
+    'FRAC':  (380, 7.0, 14.0,1,0,0,0, MILK,  SN,          1,0,0, 'students,sweet'),
+    'FRAM':  (360, 6.0, 13.0,1,0,0,0, MILK,  SN,          0,0,0, 'women,sweet'),
+    'FRAC2': (420, 7.0, 16.0,1,0,0,0, MILK,  SN,          0,0,0, 'students,sweet'),
+    'FRAS':  (340, 5.0, 12.0,1,0,0,0, MILK,  SN,          0,0,0, 'students,sweet'),
+    'CROI':  (280, 5.0, 16.0,1,1,1,0, '',    BF,          1,0,0, 'business,women'),
+    'PAIN':  (320, 6.0, 18.0,1,1,1,0, '',    BF,          1,0,0, 'business,women'),
+    'SCON':  (360, 6.0, 14.0,1,1,1,0, '',    BF,          0,0,0, 'women'),
+    'MUFF':  (380, 7.0, 15.0,1,1,1,1, '',    f'{BF},{SN}',0,0,0, 'students'),
+    'CANN':  (220, 5.0, 10.0,1,1,1,0, '',    SN,          0,0,0, 'women'),
+    'CHEE':  (390, 7.0, 26.0,1,1,0,0, '',    SN,          0,1,0, 'women,sweet'),
+    'SALM':  (420, 18.0,18.0,1,0,1,0, '',    f'{BF},{LU}',0,0,0, 'business,protein'),
+    'HAMC':  (450, 20.0,20.0,1,0,1,0, '',    LU,          1,0,0, 'business,protein'),
+    'EGGS':  (380, 12.0,16.0,0,1,1,0, '',    f'{BF},{LU}',0,0,0, 'protein'),
+    'TUNA':  (480, 24.0,22.0,1,0,1,0, '',    LU,          0,0,0, 'business,protein'),
+    'TERI':  (460, 28.0,14.0,0,1,1,0, '',    LU,          0,0,0, 'protein,students'),
+    'VEGE':  (390, 10.0,14.0,0,0,1,0, '',    LU,          0,0,0, 'health'),
+    'SALAD': (350, 26.0,18.0,1,1,1,0, '',    LU,          0,0,0, 'health,protein'),
+    'ACAI':  (320, 5.0, 8.0, 0,0,0,1, '',    BF,          0,1,0, 'health,women'),
+}
+
+# key, category, en, ja, en_desc, ja_desc, sizes, base USD, regions (None = global)
 ITEMS = [
     ('DRIP',   B, 'Drip Coffee', 'ドリップコーヒー', 'Our signature medium roast, brewed fresh every 30 minutes. Notes of chocolate and toasted nuts.', '30分ごとに淹れ替える看板のミディアムロースト。チョコレートとナッツの香り。', ['S','M','L'], 3.80, None),
     ('POUR',   B, 'Pour Over', 'ハンドドリップ', 'Single-origin beans hand-brewed to order. Rotating selection from Ethiopia, Colombia and Kenya.', 'シングルオリジンを一杯ずつハンドドリップ。エチオピア・コロンビア・ケニアの週替わり。', ['M','L'], 5.50, None),
@@ -113,7 +176,10 @@ for st in STORES:
         # ~8% of optional items are not carried at this store
         if random.random() < 0.08:
             continue
+        (kcal, protein, fat, c_milk, c_egg, c_wheat, c_nuts,
+         alt_milk, scenes, is_classic, is_new, is_seasonal, target_tags) = NUTRITION[key]
         for size in sizes:
+            mult = SIZE_MULT[size]
             menu_items.append({
                 'sku': f"{st['store_id']}-{key}-{size.replace('/','')}",
                 'store_id': st['store_id'],
@@ -125,6 +191,19 @@ for st in STORES:
                 'currency': 'JPY',
                 'description': ja_d,
                 'active': random.random() > 0.02,
+                'calories_kcal': int(round(kcal * mult)),
+                'protein_g': round(protein * mult, 1),
+                'fat_g': round(fat * mult, 1),
+                'contains_milk': bool(c_milk),
+                'contains_egg': bool(c_egg),
+                'contains_wheat': bool(c_wheat),
+                'contains_nuts': bool(c_nuts),
+                'alt_milk_options': alt_milk,
+                'scenes': scenes,
+                'is_classic': bool(is_classic),
+                'is_new': bool(is_new),
+                'is_seasonal': bool(is_seasonal),
+                'target_tags': target_tags,
             })
 
 # historical orders: 2024-01 .. 2026-08, ~2400 orders
