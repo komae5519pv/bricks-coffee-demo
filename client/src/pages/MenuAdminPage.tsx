@@ -191,7 +191,7 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
             )}
             <Input placeholder="商品名" value={edit.item_name}
               onChange={(e) => setEdit({ ...edit, item_name: e.target.value })} />
-            <Input placeholder="カテゴリ (例: Espresso)" value={edit.category}
+            <Input placeholder="カテゴリ (例: エスプレッソ)" value={edit.category}
               onChange={(e) => setEdit({ ...edit, category: e.target.value })} />
             <select className="h-9 rounded-md border bg-background px-3 text-sm" value={edit.size}
               onChange={(e) => setEdit({ ...edit, size: e.target.value as EditState['size'] })}>
