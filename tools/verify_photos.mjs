@@ -60,8 +60,26 @@ await page.getByRole('button', { name: /追加/ }).first().waitFor({ timeout: 30
 await page.waitForTimeout(4000); // let lazy images settle
 const order = await imageStats();
 console.log('order tab:', JSON.stringify(order));
+
+// --- brand + role-based navigation ---
+const brand = await page.getByRole('heading', { name: 'BRICKS COFFEE' }).count();
+const navCount = async () => page.locator('header nav a').count();
+const staffNav = await navCount();
 await page.screenshot({ path: ORDER_OUT });
 console.log('screenshot:', ORDER_OUT);
+
+// switch to customer preview: nav must collapse to 注文する/マイ注文 only
+await page.getByRole('button', { name: 'お客さん表示' }).click();
+await page.waitForTimeout(500);
+const customerNav = await navCount();
+const CUSTOMER_OUT = ORDER_OUT.replace('.png', '-customer.png');
+await page.screenshot({ path: CUSTOMER_OUT });
+console.log('screenshot:', CUSTOMER_OUT);
+// back to staff view
+await page.getByRole('button', { name: 'スタッフ表示' }).click();
+await page.waitForTimeout(500);
+const staffNavAfter = await navCount();
+console.log(JSON.stringify({ brand, staffNav, customerNav, staffNavAfter }));
 
 // --- admin menu (staff) ---
 await page.goto(`${APP}/admin/menu`, { waitUntil: 'networkidle', timeout: 60000 });
@@ -81,6 +99,10 @@ if (admin.imgs === 0 || admin.loaded === 0 || admin.credits === 0) failures.push
 if (!order.hasYen) failures.push('order tab: no ¥ price visible');
 if (order.hasForeignCurrency) failures.push('order tab: legacy currency symbol (A$/US$/£/€) still visible');
 if (!order.hasJaCategory) failures.push('order tab: Japanese category chip missing');
+if (brand !== 1) failures.push('brand heading BRICKS COFFEE not found');
+if (staffNav !== 6) failures.push(`staff nav should be 6 items, got ${staffNav}`);
+if (customerNav !== 2) failures.push(`customer preview nav should be 2 items, got ${customerNav}`);
+if (staffNavAfter !== 6) failures.push(`nav after switching back should be 6 items, got ${staffNavAfter}`);
 if (failures.length) {
   console.error('VERIFICATION FAILED:', failures.join(' / '));
   process.exit(1);
