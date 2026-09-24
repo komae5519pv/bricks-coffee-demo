@@ -109,6 +109,53 @@ export interface PricedItem {
   quantity: number;
 }
 
+/**
+ * Insert an order header + all its items as ONE atomic unit.
+ *
+ * Implemented as a single SQL statement (WITH ... INSERT ... INSERT ...):
+ * a single statement is always atomic in PostgreSQL — if any item insert
+ * fails, the header insert rolls back with it, so a partial order can never
+ * be committed.
+ *
+ * Why not BEGIN/COMMIT over pool.connect(): the asUser(req) proxy only wraps
+ * exported *functions* in the user context; the exported `pool` (RoutingPool)
+ * is a class instance and is returned unwrapped, so `pool.connect()` from a
+ * route handler would silently land on the service-principal pool (bypassing
+ * RLS and writing current_user = SP). The wrapped `query` export, by
+ * contrast, is guaranteed to run inside the per-user OBO context, so this
+ * helper goes through DbLike.query only.
+ */
+export async function insertOrder(
+  db: DbLike,
+  o: { store_id: string; customer_name: string; channel: string; total: number; currency: string; items: PricedItem[] },
+): Promise<string> {
+  const itemsJson = JSON.stringify(
+    o.items.map((i) => ({
+      sku: i.sku,
+      item_name: i.item_name,
+      size: i.size,
+      unit_price: i.unit_price,
+      quantity: i.quantity,
+    })),
+  );
+  const { rows } = await db.query<{ id: string }>(
+    `WITH new_order AS (
+       INSERT INTO cofee_shop.orders (store_id, user_email, customer_name, channel, total_price, currency)
+       VALUES ($1, current_user, $2, $3, $4, $5)
+       RETURNING id
+     ), new_items AS (
+       INSERT INTO cofee_shop.order_items (order_id, user_email, sku, item_name, size, unit_price, quantity)
+       SELECT new_order.id, current_user, v.sku, v.item_name, v.size, v.unit_price, v.quantity
+       FROM new_order,
+            jsonb_to_recordset($6::jsonb) AS v(sku text, item_name text, size text, unit_price numeric, quantity int)
+       RETURNING order_id
+     )
+     SELECT id FROM new_order`,
+    [o.store_id, o.customer_name, o.channel, o.total, o.currency, itemsJson],
+  );
+  return rows[0].id;
+}
+
 /** Validate a cart against the live menu and price it server-side. */
 export async function priceCart(
   db: DbLike,

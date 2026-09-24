@@ -10,7 +10,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import type { AppHandle } from './server';
 import type { EmbeddingsInvoker } from './lib/embed';
-import { searchMenu, priceCart, reembedItems, type DbLike } from './lib/menu';
+import { searchMenu, priceCart, insertOrder, reembedItems, type DbLike } from './lib/menu';
 import { getDeltaSyncStatus, getLakebaseStatus } from './lib/status';
 
 export interface OrderRow {
@@ -186,21 +186,18 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           parsed.data.items,
         );
         const db = userDb(req);
-        const { rows: created } = await db.query<{ id: string }>(
-          `INSERT INTO cofee_shop.orders (store_id, user_email, customer_name, channel, total_price, currency)
-           VALUES ($1, current_user, $2, 'manual', $3, $4) RETURNING id`,
-          [parsed.data.store_id, parsed.data.customer_name, total, currency],
-        );
-        for (const p of priced) {
-          await db.query(
-            `INSERT INTO cofee_shop.order_items (order_id, user_email, sku, item_name, size, unit_price, quantity)
-             VALUES ($1, current_user, $2, $3, $4, $5, $6)`,
-            [created[0].id, p.sku, p.item_name, p.size, p.unit_price, p.quantity],
-          );
-        }
+        // Atomic: header + items go in as ONE statement (see insertOrder).
+        const orderId = await insertOrder(db, {
+          store_id: parsed.data.store_id,
+          customer_name: parsed.data.customer_name,
+          channel: 'manual',
+          total,
+          currency,
+          items: priced,
+        });
         const { rows } = await db.query<OrderRow>(
           `${ORDERS_WITH_ITEMS} WHERE o.id = $1 GROUP BY o.id`,
-          [created[0].id],
+          [orderId],
         );
         res.status(201).json(rows[0]);
       } catch (e) {

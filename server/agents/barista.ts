@@ -13,7 +13,7 @@
 import { createAgent, tool } from '@databricks/appkit/beta';
 import { z } from 'zod';
 import type { DbLike } from '../lib/menu';
-import { searchMenu, priceCart, getActiveItem } from '../lib/menu';
+import { searchMenu, priceCart, insertOrder, getActiveItem } from '../lib/menu';
 import type { EmbeddingsInvoker } from '../lib/embed';
 
 interface StoreRow {
@@ -182,19 +182,15 @@ export const barista = createAgent({
         annotations: { effect: 'write' },
         execute: async ({ store_id, customer_name, items }) => {
           const { priced, total, currency } = await priceCart(db, store_id, items);
-          const { rows: created } = await db.query<{ id: string }>(
-            `INSERT INTO cofee_shop.orders (store_id, user_email, customer_name, channel, total_price, currency)
-             VALUES ($1, current_user, $2, 'chat', $3, $4) RETURNING id`,
-            [store_id, customer_name, total, currency],
-          );
-          const orderId = created[0].id;
-          for (const p of priced) {
-            await db.query(
-              `INSERT INTO cofee_shop.order_items (order_id, user_email, sku, item_name, size, unit_price, quantity)
-               VALUES ($1, current_user, $2, $3, $4, $5, $6)`,
-              [orderId, p.sku, p.item_name, p.size, p.unit_price, p.quantity],
-            );
-          }
+          // Atomic: header + items go in as ONE statement (see insertOrder).
+          const orderId = await insertOrder(db, {
+            store_id,
+            customer_name,
+            channel: 'chat',
+            total,
+            currency,
+            items: priced,
+          });
           return {
             order_id: orderId,
             status: 'received',

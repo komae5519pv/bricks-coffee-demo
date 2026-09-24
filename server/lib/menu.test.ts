@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { priceCart, searchMenu, type DbLike, type MenuRow } from './menu';
+import { insertOrder, priceCart, searchMenu, type DbLike, type MenuRow } from './menu';
 
 const LATTE: MenuRow = {
   sku: 'TYO001-LATTE-M',
@@ -34,6 +34,34 @@ describe('priceCart', () => {
     await expect(priceCart(dbWith([]), 'TYO001', [{ sku: 'NOPE', quantity: 1 }])).rejects.toThrow(
       'この店舗では「NOPE」は販売していないか、現在取り扱っていません',
     );
+  });
+});
+
+describe('insertOrder', () => {
+  it('writes header + items in a SINGLE statement (atomic by construction)', async () => {
+    const calls: { text: string; values?: unknown[] }[] = [];
+    const db: DbLike = {
+      query: <T,>(text: string, values?: unknown[]) => {
+        calls.push({ text, values });
+        return Promise.resolve({ rows: [{ id: 'order-1' }] as T[] });
+      },
+    };
+    const id = await insertOrder(db, {
+      store_id: 'TYO001',
+      customer_name: 'Konomi',
+      channel: 'manual',
+      total: 1100,
+      currency: 'JPY',
+      items: [{ sku: 'TYO001-LATTE-M', item_name: 'カフェラテ', size: 'M', unit_price: 550, quantity: 2 }],
+    });
+    expect(id).toBe('order-1');
+    // exactly one round-trip: no interleaving connection can see a partial order
+    expect(calls).toHaveLength(1);
+    expect(calls[0].text).toContain('INSERT INTO cofee_shop.orders');
+    expect(calls[0].text).toContain('INSERT INTO cofee_shop.order_items');
+    expect(calls[0].text).toContain('jsonb_to_recordset');
+    const itemsParam = JSON.parse(calls[0].values![5] as string) as { sku: string; quantity: number }[];
+    expect(itemsParam).toEqual([{ sku: 'TYO001-LATTE-M', item_name: 'カフェラテ', size: 'M', unit_price: 550, quantity: 2 }]);
   });
 });
 
