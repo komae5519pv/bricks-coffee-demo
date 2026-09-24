@@ -2,8 +2,8 @@
 """Generate production-shaped seed data for the DAIWT coffee shop app.
 
 Simulates a global coffee chain: 12 stores across JP/US/UK/SG/AU/FR/DE,
-localized menus (ja/en), ~1.2k SKUs, and ~2.4k historical orders.
-Output: server/seed/seed-data.ts
+localized menus (ja/en), 924 SKUs, and 7,284 historical order lines.
+Output: server/seed/{stores,menu_items,historical_orders}.json
 """
 import json, random, pathlib
 
