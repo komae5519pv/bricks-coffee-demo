@@ -303,6 +303,11 @@ export class CoffeeToolsPlugin extends Plugin {
     return applyToolkitOptions(this.registry, opts);
   }
 
+  /** Required by isToolProvider (registration check for toolkit dispatch). */
+  getAgentTools(): ReturnType<typeof toolsFromRegistry> {
+    return toolsFromRegistry(this.registry);
+  }
+
   async executeAgentTool(name: string, args: unknown, signal?: AbortSignal): Promise<unknown> {
     return executeFromRegistry(this.registry, name, args, signal);
   }
