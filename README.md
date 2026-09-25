@@ -90,9 +90,9 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
 本人の注文履歴 (OBO + RLS で本人分のみ) に基づく再注文機能。認証演示とパーソナライズ演示が重なるポイント。
 
 - **バリスタ**: `get_my_frequent_items`(本人履歴の集計・回数付きランキング→画像カードで追加可)と `reorder_last`(直近注文と同じ SKU・数量をセットカードで返し「まとめて追加」)。履歴0件なら「まだ注文履歴がありません」と人気商品を案内
-- **注文ページ**: 「前回と同じ」クイックアクション(直近注文をワンクリックでカートに。注文店舗が表示店舗と違う場合は自動で店舗切替)と「よく注文する商品」セクション(×N バッジ付き小カード帯・履歴0件なら非表示)。/api/orders は OBO+RLS で本人分のみ取得
+- **注文ページ**: 「前回と同じ」クイックアクション(直近注文をワンクリックでカートに。注文店舗が表示店舗と違う場合は自動で店舗切替)と「よく注文する商品」セクション(×N バッジ付き小カード帯・履歴0件なら非表示)。/api/orders は `user_email = current_user` の明示フィルタで本人分のみ返す(RLS だけに頼らない。global staff でも他者の注文は混ざらない)
 - **ツールの OBO 構成**(重要): バリスタの DB ツールは coffee-tools ツールキットプラグイン経由で実行(`PluginContext.executeTool → asUser(req)` で実行時に本人コンテキスト。inline function tool だと SP 実行になり user_email=SP になってしまうため)
-- **RLS 実証**: 他者注文(other.user@example.com のデモ用注文 bb180140 が存在)があっても、ツールの owner フィルタ(user_email=current_user)では0件・frequent ランキングにも混入しない。なお konomi.omae@databricks.com は global staff のため REST /api/orders ではスタッフ権限で店舗の全注文が見える(設計通り)
+- **RLS 実証**: 他者注文(other.user@example.com のデモ用注文 bb180140 が存在)があっても、ツールの owner フィルタ(user_email=current_user)では0件・frequent ランキングにも混入しない。/api/orders も owner フィルタで本人分のみ(スタッフの RLS 許可に頼らない)。店舗の全注文が見えるのは /api/board(キッチンボード)経由のみで、これはスタッフ業務としての設計通り
 
 ## 栄養・健康軸 (カロリー・アレルゲン・代替乳)
 
@@ -212,4 +212,9 @@ ETIMEDOUT となりデプロイが失敗したため(手元のネットワーク
 - スレッド履歴は InMemoryThreadStore(再起動で消失)。本番用途なら永続ストアを agents() に渡す。
 - menu_items は CDC 対象外(vector 列)。メニュー管理で編集しても Delta 側 menu_items は
   自動更新されない(デモの Genie 参照は seed 時点のメニュー)。
-- ページの言語は日本語中心。価格は店舗通貨建て(JPY/USD/GBP/SGD/AUD/EUR)。
+- 「前回と同じ」のエッジ: 直近注文が他店舗の商品のみの場合、店舗切替後も当該店舗で
+  取り扱いのない商品はカートに入らない(メッセージで通知)。
+- エージェント機能は AppKit agents プラグイン(beta) 依存。API 変更時は追随が必要。
+- チャットのツール結果紐付け(toolNameByCallId)はセッション内 Map 保持のため、極端に長い
+  会話ではわずかに増大する(実用上は無害)。
+- ページの言語は日本語中心。価格はすべて円(整数・店舗により価格差あり)。

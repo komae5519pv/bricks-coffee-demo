@@ -178,7 +178,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
       try {
         const { rows } = await appkit.lakebase
           .asUser(req)
-          .query<OrderRow>(`${ORDERS_WITH_ITEMS} GROUP BY o.id ORDER BY o.created_at DESC LIMIT 50`);
+          .query<OrderRow>(`${ORDERS_WITH_ITEMS} WHERE o.user_email = current_user GROUP BY o.id ORDER BY o.created_at DESC LIMIT 50`);
         res.json(rows);
       } catch (e) {
         res.status(500).json({ error: String(e) });

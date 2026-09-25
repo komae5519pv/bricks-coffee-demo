@@ -42,21 +42,47 @@ if (reorderBtn === 0) failures.push('前回と同じ button missing');
 if (freqRow === 0) failures.push('frequent row missing');
 if (freqBadges === 0) failures.push('no ×N badges in frequent row');
 
+// --- regression (B1): /api/orders must be owner-scoped; the foreign demo
+// order (other.user@example.com, ゆずシトラスティー) must not leak ---
+const leakCheck = await page.evaluate(async () => {
+  const [me, orders] = await Promise.all([
+    fetch('/api/me').then((r) => r.json()),
+    fetch('/api/orders').then((r) => r.json()),
+  ]);
+  const foreign = orders.filter((o) => o.user_email !== me.email);
+  return { me: me.email, total: orders.length, foreign: [...new Set(foreign.map((o) => o.user_email))] };
+});
+console.log('owner scope:', JSON.stringify(leakCheck));
+if (leakCheck.foreign.length > 0) failures.push(`foreign orders leaked into /api/orders: ${leakCheck.foreign.join(',')}`);
+const uiYuzu = await page.locator('[data-frequent-row]').getByText('ゆずシトラスティー').count();
+if (uiYuzu > 0) failures.push('ゆずシトラスティー (他者注文) がよく注文する商品に混入');
+
+// --- non-regression: kitchen board still shows store-scoped orders ---
+const boardCheck = await page.evaluate(async () => {
+  const rows = await fetch('/api/board?store_id=TYO001').then((r) => r.json());
+  return { total: rows.length, hasForeign: rows.some((o) => o.user_email === 'other.user@example.com') };
+});
+console.log('board scope:', JSON.stringify(boardCheck));
+if (!boardCheck.hasForeign) failures.push('kitchen board lost store-scoped visibility (non-regression)');
+
 // clear the cart for a clean reorder assertion
 const clearBtn = page.locator('[data-cart]').getByText('クリア');
 if (await clearBtn.count()) await clearBtn.click();
 await page.waitForTimeout(500);
 
-// 前回と同じ: latest order (抹茶ラテ×1 + アイスコーヒー×2) lands in the cart
+// 前回と同じ: the LATEST own order lands in the cart (data-driven, owner-scoped)
+const lastOrderItems = await page.evaluate(async () => {
+  const orders = await fetch('/api/orders').then((r) => r.json());
+  return (orders[0]?.items ?? []).map((i) => i.item_name);
+});
 await page.getByRole('button', { name: '前回と同じ' }).click();
 await page.waitForTimeout(3500); // store auto-switch + menu reload + add
 const cartAfterReorder = await page.locator('[data-cart]').innerText();
-console.log('cart after 前回と同じ:', cartAfterReorder.replace(/\n/g, ' | ').slice(0, 300));
-if (!cartAfterReorder.includes('アイスコーヒー') && !cartAfterReorder.includes('抹茶ラテ')) {
-  failures.push('reorder did not add last-order items to cart');
+console.log('last order items:', lastOrderItems, '| cart:', cartAfterReorder.replace(/\n/g, ' | ').slice(0, 200));
+for (const name of lastOrderItems) {
+  if (!cartAfterReorder.includes(name)) failures.push(`reorder missing last-order item: ${name}`);
 }
-const hasQty2 = /アイスコーヒー/.test(cartAfterReorder) && /合計/.test(cartAfterReorder);
-if (!hasQty2) failures.push('reorder did not land in the cart with a total');
+if (!/合計/.test(cartAfterReorder)) failures.push('reorder did not land in the cart with a total');
 await page.screenshot({ path: OUT.replace('.png', '-ui.png') });
 
 // ---------- agent: frequent ranking + reorder set ----------
@@ -73,6 +99,8 @@ const chatCards = await page.locator('[data-chat-product-card]').count();
 console.log('chat frequent:', JSON.stringify({ chatCards, chatBadges }));
 if (chatCards === 0) failures.push('no frequent cards in chat');
 if (chatBadges === 0) failures.push('no ×N count badges on chat frequent cards');
+const chatYuzu = await page.locator('[data-chat-product-card]').getByText('ゆずシトラスティー').count();
+if (chatYuzu > 0) failures.push('ゆずシトラスティー (他者注文) がチャットの商品カードに混入');
 
 await ask('前回と同じので');
 const setCount = await page.locator('[data-chat-set-card]').count();
