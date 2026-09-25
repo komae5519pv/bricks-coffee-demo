@@ -230,7 +230,7 @@ export function OrderPage() {
   };
 
   return (
-    <div className="grid gap-6 pb-20 lg:pb-0 lg:grid-cols-[1fr_380px]">
+    <div className="grid grid-cols-1 gap-6 pb-20 lg:pb-0 lg:grid-cols-[1fr_380px]">
       <div className="space-y-4">
         {/* Sticky filter bar: store selector, NL search, category chips stay
             operable while the menu grid scrolls (opaque bg so cards don't
@@ -238,7 +238,7 @@ export function OrderPage() {
         <div className="sticky top-14 z-30 -mx-4 md:-mx-6 px-4 md:px-6 pt-1 pb-3 space-y-3 bg-background border-b border-border/60">
         <div className="flex flex-wrap items-center gap-3">
           <select
-            className="h-11 sm:h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+            className="h-11 sm:h-9 w-full sm:w-auto max-w-full rounded-md border bg-background px-3 text-sm"
             value={storeId}
             onChange={(e) => { setStoreId(e.target.value); setCart([]); setCategory(''); }}
           >

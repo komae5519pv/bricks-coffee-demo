@@ -7,7 +7,7 @@ function Row({ label, value, mono }: { label: string; value: React.ReactNode; mo
   return (
     <div className="flex justify-between gap-4 py-1 text-sm">
       <span className="text-muted-foreground shrink-0">{label}</span>
-      <span className={`text-right break-all ${mono ? 'font-mono text-xs' : ''}`}>{value ?? '-'}</span>
+      <span className={`min-w-0 text-right break-all ${mono ? 'font-mono text-xs' : ''}`}>{value ?? '-'}</span>
     </div>
   );
 }
@@ -97,7 +97,7 @@ export function StatusPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Agent status */}
         <Card>
           <CardContent className="p-4 space-y-1">
