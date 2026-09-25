@@ -158,7 +158,9 @@ export function OrderPage() {
   const frequent = useMemo(() => computeFrequent(orders, menu), [orders, menu]);
   const lastOrder = orders[0]; // API returns newest first
 
-  const reorderLast = () => {
+  const [pendingReorder, setPendingReorder] = useState(false);
+
+  const doReorder = () => {
     if (!lastOrder) return;
     let added = 0;
     for (const line of lastOrder.items) {
@@ -170,10 +172,32 @@ export function OrderPage() {
     }
     setNotice(
       added > 0
-          ? `前回のご注文と同じ内容をカートに入れました(${added}点)。`
-          : '前回のご注文の商品はこの店舗では現在取り扱っていません。',
+        ? `前回のご注文と同じ内容をカートに入れました(${added}点)。`
+        : '前回のご注文の商品はこの店舗では現在取り扱っていません。',
     );
   };
+
+  const reorderLast = () => {
+    if (!lastOrder) return;
+    if (lastOrder.store_id !== storeId) {
+      // auto-switch to the last order's store; the add runs once the menu loads
+      setPendingReorder(true);
+      setStoreId(lastOrder.store_id);
+      return;
+    }
+    doReorder();
+  };
+
+  useEffect(() => {
+    if (!pendingReorder || loading || menu.length === 0 || lastOrder?.store_id !== storeId) return;
+    // sync with the async menu load after the auto store switch — not a
+    // cascading render; the cart update waits for external data
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPendingReorder(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    doReorder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingReorder, loading, menu, lastOrder, storeId]);
 
   const bump = (sku: string, delta: number) => {
     setCart((prev) =>
