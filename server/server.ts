@@ -6,9 +6,10 @@
  *   - serving()   : Foundation Model API (embeddings for semantic menu search)
  *   - agents()    : the barista agent, hosted on this app (no agent endpoint)
  */
-import { createApp, lakebase, server, serving } from '@databricks/appkit';
+import { createApp, lakebase, server, serving, toPlugin } from '@databricks/appkit';
 import { agents } from '@databricks/appkit/beta';
 import { barista, setBaristaEmbeddings } from './agents/barista';
+import { CoffeeToolsPlugin, setCoffeeToolsDb } from './plugins/coffee-tools';
 import { initializeDatabase } from './db';
 import { registerCoffeeRoutes } from './routes';
 import type { EmbeddingsInvoker } from './lib/embed';
@@ -20,6 +21,7 @@ const appkit = await createApp({
     lakebase(),
     serving({ endpoints: { embeddings: { env: 'EMBEDDING_ENDPOINT_NAME' } } }),
     server(),
+    toPlugin(CoffeeToolsPlugin)(),
   ],
   async onPluginsReady(handle) {
     /**
@@ -39,6 +41,12 @@ const appkit = await createApp({
       },
     };
     setBaristaEmbeddings(embeddings);
+    setCoffeeToolsDb({
+      query: async <T = any>(t: string, v?: unknown[]) => {
+        const r = await handle.lakebase.query(t, v);
+        return { rows: r.rows as T[], rowCount: r.rowCount };
+      },
+    });
     await initializeDatabase(spDb, embeddings);
     registerCoffeeRoutes(handle, embeddings);
   },
