@@ -72,7 +72,7 @@ export function StatusPage() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <h3 className="font-medium text-sm">アーキテクチャ</h3>
-          <div className="flex flex-wrap items-stretch gap-2 text-xs">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-stretch gap-2 text-xs">
             {[
               { title: 'ブラウザ', sub: 'React SPA' },
               { title: 'Databricks App', sub: 'Express + バリスタエージェント (on-app)' },
@@ -86,7 +86,7 @@ export function StatusPage() {
                   <div className="font-semibold">{n.title}</div>
                   <div className="text-muted-foreground">{n.sub}</div>
                 </div>
-                {i < arr.length - 1 && <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                {i < arr.length - 1 && <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 rotate-90 sm:rotate-0" />}
               </div>
             ))}
           </div>

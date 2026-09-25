@@ -29,7 +29,7 @@ export function HistoryPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <h2 className="text-xl font-bold flex items-center gap-2">
+        <h2 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap">
           <BarChart3 className="h-5 w-5" /> 売上・履歴
         </h2>
         <select

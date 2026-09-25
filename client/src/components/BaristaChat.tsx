@@ -93,13 +93,13 @@ function ProductMiniCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: 
               key={s.sku}
               size="sm"
               variant={s.sku === sku ? 'default' : 'outline'}
-              className="h-6 px-2 text-xs"
+              className="h-11 sm:h-8 px-2 text-xs"
               onClick={() => setSku(s.sku)}
             >
               {s.size}
             </Button>
           ))}
-        <Button size="sm" className="ml-auto h-7" onClick={() => onAdd(current)}>
+        <Button size="sm" className="ml-auto h-11 sm:h-8" onClick={() => onAdd(current)}>
           <Plus className="h-3.5 w-3.5 mr-1" /> 追加
         </Button>
       </div>
@@ -127,7 +127,7 @@ function SetCard({ set, onAddAll }: { set: RecommendSet; onAddAll: (items: MenuI
         <div className="text-sm font-semibold">
           合計 {fmtPrice(set.total_price, set.currency)} / {set.total_kcal}kcal
         </div>
-        <Button size="sm" className="h-7" onClick={() => onAddAll(set.items)}>
+        <Button size="sm" className="h-11 sm:h-8" onClick={() => onAddAll(set.items)}>
           <Plus className="h-3.5 w-3.5 mr-1" /> まとめて追加
         </Button>
       </div>

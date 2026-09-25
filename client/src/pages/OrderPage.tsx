@@ -47,6 +47,7 @@ function ProductCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: Menu
               <Button
                 key={s.sku}
                 size="sm"
+                className="h-11 sm:h-9"
                 variant={s.sku === sku ? 'default' : 'outline'}
                 onClick={() => setSku(s.sku)}
               >
@@ -194,11 +195,9 @@ export function OrderPage() {
 
   useEffect(() => {
     if (!pendingReorder || loading || menu.length === 0 || menu[0]?.store_id !== storeId || lastOrder?.store_id !== storeId) return;
-    // sync with the async menu load after the auto store switch — not a
-    // cascading render; the cart update waits for external data
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // sync with the async menu load after the auto store switch — the cart
+    // update waits for external data (rule doesn't flag function calls here)
     setPendingReorder(false);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     doReorder();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingReorder, loading, menu, lastOrder, storeId]);
@@ -212,6 +211,7 @@ export function OrderPage() {
   };
 
   const { total, totalKcal } = useMemo(() => cartTotals(cart), [cart]);
+  const cartCount = useMemo(() => cart.reduce((s, l) => s + l.quantity, 0), [cart]);
   const currency = cart[0]?.currency ?? store?.currency ?? 'JPY';
 
   const placeOrder = async () => {
@@ -230,7 +230,7 @@ export function OrderPage() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+    <div className="grid gap-6 pb-20 lg:pb-0 lg:grid-cols-[1fr_380px]">
       <div className="space-y-4">
         {/* Sticky filter bar: store selector, NL search, category chips stay
             operable while the menu grid scrolls (opaque bg so cards don't
@@ -238,7 +238,7 @@ export function OrderPage() {
         <div className="sticky top-14 z-30 -mx-4 md:-mx-6 px-4 md:px-6 pt-1 pb-3 space-y-3 bg-background border-b border-border/60">
         <div className="flex flex-wrap items-center gap-3">
           <select
-            className="h-9 rounded-md border bg-background px-3 text-sm"
+            className="h-11 sm:h-9 max-w-full rounded-md border bg-background px-3 text-sm"
             value={storeId}
             onChange={(e) => { setStoreId(e.target.value); setCart([]); setCategory(''); }}
           >
@@ -248,10 +248,10 @@ export function OrderPage() {
               </option>
             ))}
           </select>
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <div className="relative w-full sm:flex-1 sm:w-auto sm:min-w-[200px]">
+            <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
             <Input
-              className="pl-8"
+              className="pl-8 h-11 sm:h-9"
               placeholder="メニューを自然言語で検索(例: 甘くて冷たいドリンク)"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -260,11 +260,11 @@ export function OrderPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant={category === '' ? 'default' : 'outline'} onClick={() => setCategory('')}>
+          <Button size="sm" className="h-11 sm:h-9" variant={category === '' ? 'default' : 'outline'} onClick={() => setCategory('')}>
             すべて
           </Button>
           {categories.map((c) => (
-            <Button key={c} size="sm" variant={category === c ? 'default' : 'outline'} onClick={() => setCategory(c)}>
+            <Button key={c} size="sm" className="h-11 sm:h-9" variant={category === c ? 'default' : 'outline'} onClick={() => setCategory(c)}>
               {c}
             </Button>
           ))}
@@ -286,7 +286,7 @@ export function OrderPage() {
                   key={k}
                   size="sm"
                   variant={maxKcal === k ? 'default' : 'outline'}
-                  className="h-6 px-2 text-xs"
+                  className="h-11 sm:h-8 px-2 text-xs"
                   onClick={() => setMaxKcal(maxKcal === k ? null : k)}
                 >
                   {k}
@@ -294,10 +294,10 @@ export function OrderPage() {
               ))}
             </span>
             <span className="flex items-center gap-1">
-              <Button size="sm" variant={lowFat ? 'default' : 'outline'} className="h-6 px-2 text-xs" onClick={() => setLowFat((v) => !v)}>
+              <Button size="sm" variant={lowFat ? 'default' : 'outline'} className="h-11 sm:h-8 px-2 text-xs" onClick={() => setLowFat((v) => !v)}>
                 低脂質
               </Button>
-              <Button size="sm" variant={highProtein ? 'default' : 'outline'} className="h-6 px-2 text-xs" onClick={() => setHighProtein((v) => !v)}>
+              <Button size="sm" variant={highProtein ? 'default' : 'outline'} className="h-11 sm:h-8 px-2 text-xs" onClick={() => setHighProtein((v) => !v)}>
                 高タンパク
               </Button>
             </span>
@@ -314,7 +314,7 @@ export function OrderPage() {
                   key={v}
                   size="sm"
                   variant={scene === v ? 'default' : 'outline'}
-                  className="h-6 px-2 text-xs"
+                  className="h-11 sm:h-8 px-2 text-xs"
                   onClick={() => setScene(scene === v ? '' : v)}
                 >
                   {label}
@@ -333,7 +333,7 @@ export function OrderPage() {
                   key={v}
                   size="sm"
                   variant={flag === v ? 'default' : 'outline'}
-                  className="h-6 px-2 text-xs"
+                  className="h-11 sm:h-8 px-2 text-xs"
                   onClick={() => setFlag(flag === v ? '' : v)}
                 >
                   {label}
@@ -354,17 +354,17 @@ export function OrderPage() {
         </div>
 
         {(lastOrder || frequent.length > 0) && (
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {lastOrder && (
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={reorderLast}>
+                <Button size="sm" variant="outline" className="h-11 sm:h-8 text-xs" onClick={reorderLast}>
                   <RotateCcw className="h-3.5 w-3.5 mr-1" /> 前回と同じ
                 </Button>
               )}
               {frequent.length > 0 && <span className="text-xs text-muted-foreground">よく注文する商品</span>}
             </div>
             {frequent.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-1" data-frequent-row>
+              <div className="flex gap-2 overflow-x-auto pb-1 min-w-0" data-frequent-row>
                 {frequent.map(({ item, count }) => (
                   <div key={item.sku} className="w-40 shrink-0 rounded-md border bg-background p-2 flex flex-col gap-1">
                     <MenuImage item={item} width={200} className="w-full" imgClassName="h-16" creditVariant="inline" />
@@ -405,7 +405,7 @@ export function OrderPage() {
             <div className="flex items-center gap-2 font-medium">
               <ShoppingCart className="h-4 w-4" /> カート
               {cart.length > 0 && (
-                <button className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1" onClick={() => setCart([])}>
+                <button className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px] sm:min-h-0" onClick={() => setCart([])}>
                   <Trash2 className="h-3.5 w-3.5" /> クリア
                 </button>
               )}
@@ -424,11 +424,11 @@ export function OrderPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => bump(l.sku, -1)}>
+                      <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-7 sm:w-7" onClick={() => bump(l.sku, -1)}>
                         <Minus className="h-3.5 w-3.5" />
                       </Button>
                       <span className="w-5 text-center">{l.quantity}</span>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => bump(l.sku, 1)}>
+                      <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-7 sm:w-7" onClick={() => bump(l.sku, 1)}>
                         <Plus className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -460,6 +460,20 @@ export function OrderPage() {
           <BaristaChat storeId={storeId || null} onAddToCart={addToCart} />
         </div>
       </div>
+
+      {/* Mobile-only floating cart bar: the right column (cart) stacks far
+          below the menu grid on phones, so the bar keeps it reachable.
+          Tap scrolls the cart into view; the count/total update on add. */}
+      {cartCount > 0 && (
+        <button
+          data-floating-cart
+          className="fixed bottom-0 inset-x-0 z-40 mx-auto mb-3 flex w-[calc(100%-2rem)] max-w-md items-center justify-center gap-2 rounded-full border bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-lg lg:hidden"
+          onClick={() => document.querySelector('[data-cart]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        >
+          <ShoppingCart className="h-4 w-4" />
+          {cartCount}点 · 合計 {fmtPrice(total, currency)}
+        </button>
+      )}
     </div>
   );
 }

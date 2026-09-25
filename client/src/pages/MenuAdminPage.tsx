@@ -222,7 +222,7 @@ export function MenuAdminPage({ me }: { me: Me | null }) {
         <p className="text-sm text-muted-foreground">読み込み中…</p>
       ) : (
         <div className="border rounded-md overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-muted/50 text-left">
               <tr>
                 <th className="p-2"></th>

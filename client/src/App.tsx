@@ -102,7 +102,7 @@ function Layout() {
         <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <Coffee className="h-5 w-5" /> BRICKS COFFEE
         </h1>
-        <NavLinks className="hidden md:flex gap-1" linkClass={navLinkClass} view={navView} />
+        <NavLinks className="hidden lg:flex gap-1" linkClass={navLinkClass} view={navView} />
         <div className="ml-auto flex items-center gap-3">
           {me?.is_staff && (
             <div
@@ -128,14 +128,14 @@ function Layout() {
             </div>
           )}
           {me && (
-            <span className="hidden md:inline text-xs text-muted-foreground">
+            <span className="hidden lg:inline text-xs text-muted-foreground">
               {me.email}
               {me.is_staff && (
                 <span className="ml-1.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary">スタッフ</span>
               )}
             </span>
           )}
-          <div className="md:hidden">
+          <div className="lg:hidden">
             <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
               <Button variant="ghost" size="icon" onClick={() => setMobileNavOpen(true)}>
                 <Menu className="h-5 w-5" />
