@@ -6,10 +6,13 @@ import {
   Card,
   CardContent,
   Input,
-  useAgentChat,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
 } from '@databricks/appkit-ui/react';
-import { Check, Plus, ShieldQuestion, X } from 'lucide-react';
-import { fmtPrice, fmtPriceKcal, type MenuItem } from '../lib/api';
+import { Check, History, Plus, ShieldQuestion, Trash2, X } from 'lucide-react';
+import { api, fmtPrice, fmtPriceKcal, type ChatThreadSummary, type MenuItem } from '../lib/api';
 import { defaultSku, groupByItemKey, type ProductGroup } from '../lib/menu-group';
 import { MenuImage } from './MenuImage';
 
@@ -136,6 +139,99 @@ function SetCard({ set, onAddAll }: { set: RecommendSet; onAddAll: (items: MenuI
 }
 
 /**
+ * Seedable agent chat hook: same SSE contract as the package's useAgentChat,
+ * plus the ability to resume an existing thread (send can carry a threadId
+ * override so a history conversation continues with its full context).
+ */
+function useSeedableAgentChat({
+  agent,
+  onEvent,
+}: {
+  agent: string;
+  onEvent: (event: AgentChatEvent) => void;
+}) {
+  const [content, setContent] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const threadIdRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const onEventRef = useRef(onEvent);
+  onEventRef.current = onEvent;
+
+  const send = async (message: string, threadOverride?: string | null) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setContent('');
+    setError(null);
+    setIsStreaming(true);
+    const threadId = threadOverride !== undefined ? threadOverride : threadIdRef.current;
+    if (threadOverride !== undefined) threadIdRef.current = threadOverride;
+    try {
+      const resp = await fetch('/api/agents/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ message, agent, ...(threadId ? { threadId } : {}) }),
+        signal: controller.signal,
+      });
+      if (!resp.ok || !resp.body) throw new Error(`chat failed: ${resp.status}`);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let acc = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith('data:')) continue;
+          const data = t.slice(5).trim();
+          if (!data || data === '[DONE]') continue;
+          try {
+            const ev = JSON.parse(data) as AgentChatEvent;
+            onEventRef.current?.(ev);
+            if (ev.type === 'appkit.metadata') {
+              const tid = (ev.data as { threadId?: unknown } | undefined)?.threadId;
+              if (typeof tid === 'string') threadIdRef.current = tid;
+            } else if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') {
+              acc += ev.delta;
+              setContent(acc);
+            }
+          } catch {
+            // skip malformed payloads — the rest of the stream is still useful
+          }
+        }
+      }
+    } catch (e) {
+      if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Chat stream failed');
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setIsStreaming(false);
+    }
+  };
+
+  const reset = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    threadIdRef.current = null;
+    setContent('');
+    setError(null);
+    setIsStreaming(false);
+  };
+
+  const setThreadId = (id: string | null) => {
+    threadIdRef.current = id;
+  };
+
+  const currentThreadId = () => threadIdRef.current;
+
+  return { content, isStreaming, error, send, reset, setThreadId, currentThreadId };
+}
+
+/**
  * Chat surface for the on-app barista agent. Mutating tool calls (placing
  * an order, changing a status) pause on the agents plugin's approval gate.
  * Assistant text renders as Markdown; search_menu/get_item_details tool
@@ -220,10 +316,59 @@ export function BaristaChat({
     }
   };
 
-  const { content, isStreaming, error, send } = useAgentChat({
+  const { content, isStreaming, error, send, reset, setThreadId, currentThreadId } = useSeedableAgentChat({
     agent: 'barista',
     onEvent: handleEvent,
   });
+
+  // --- conversation history (persisted in Lakebase via the agents plugin's
+  // ThreadStore; the plugin serves /api/agents/threads for list/get/delete) ---
+  const [threads, setThreads] = useState<ChatThreadSummary[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+
+  const refreshThreads = () =>
+    api
+      .chatThreads()
+      .then((d) => setThreads(d.threads))
+      .catch(() => setThreads([]));
+
+  useEffect(() => {
+    void refreshThreads();
+  }, []);
+
+  const loadThread = async (t: ChatThreadSummary) => {
+    try {
+      const full = await api.chatThread(t.id);
+      const loaded: Message[] = (full.messages ?? [])
+        .filter((m): m is NonNullable<typeof full.messages>[number] & { role: 'user' | 'assistant' | 'tool' } => m.role === 'user' || m.role === 'assistant' || m.role === 'tool')
+        .map((m, i) => ({
+          id: m.id ?? `h-${i}`,
+          role: m.role,
+          content: m.content,
+          toolName: m.toolCallId,
+        }));
+      setMessages(loaded);
+      setActiveThreadId(t.id);
+      setThreadId(t.id);
+      setHistoryOpen(false);
+    } catch {
+      // thread may have been deleted concurrently
+    }
+  };
+
+  const newConversation = () => {
+    reset();
+    setMessages([]);
+    setActiveThreadId(null);
+  };
+
+  const deleteThread = async (t: ChatThreadSummary) => {
+    if (!window.confirm(`「${t.title || '無題の会話'}」を削除しますか?`)) return;
+    await api.deleteChatThread(t.id).catch(() => undefined);
+    if (activeThreadId === t.id) newConversation();
+    await refreshThreads();
+  };
 
   useEffect(() => {
     if (!pendingAssistantId) return;
@@ -252,6 +397,8 @@ export function BaristaChat({
     setPendingAssistantId(assistantId);
     await send(`${storeHint}${message}`);
     setPendingAssistantId(null);
+    setActiveThreadId(currentThreadId());
+    void refreshThreads();
   };
 
   const decide = async (decision: 'approve' | 'deny') => {
@@ -269,8 +416,26 @@ export function BaristaChat({
   };
 
   return (
-    <Card className="h-[min(560px,65vh)] lg:h-full lg:min-h-0 flex flex-col">
-      <CardContent className="flex-1 overflow-y-auto p-4 space-y-3" ref={scrollRef}>
+    <>
+      <Card className="h-[min(560px,65vh)] lg:h-full lg:min-h-0 flex flex-col">
+        <div className="flex items-center justify-end gap-1 border-b px-2 py-1.5 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="履歴"
+            onClick={() => {
+              setHistoryOpen(true);
+              void refreshThreads();
+            }}
+          >
+            <History className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="新しい会話" onClick={newConversation}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+        <CardContent className="flex-1 overflow-y-auto p-4 space-y-3" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="text-sm text-muted-foreground mt-6 space-y-2">
             <p className="font-medium text-foreground">バリスタに話しかけてみましょう</p>
@@ -365,5 +530,39 @@ export function BaristaChat({
       </form>
       {error && <div className="px-3 pb-2 text-sm text-destructive">Error: {error}</div>}
     </Card>
+
+    <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+      <SheetContent side="right" className="w-80 max-w-[85vw] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>会話の履歴</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 space-y-1">
+          {threads.length === 0 && <p className="text-sm text-muted-foreground">まだ会話がありません</p>}
+          {threads.map((t) => (
+            <div
+              key={t.id}
+              className={`group flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-muted ${
+                activeThreadId === t.id ? 'bg-muted' : ''
+              }`}
+            >
+              <button className="flex-1 min-w-0 text-left" onClick={() => void loadThread(t)}>
+                <div className="truncate font-medium">{t.title || '無題の会話'}</div>
+                <div className="text-xs text-muted-foreground">{new Date(t.updatedAt).toLocaleString('ja-JP')}</div>
+              </button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                title="削除"
+                onClick={() => void deleteThread(t)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </SheetContent>
+    </Sheet>
+    </>
   );
 }

@@ -117,6 +117,30 @@ CREATE TABLE IF NOT EXISTS cofee_shop.customer_preferences (
   PRIMARY KEY (user_email, preference_key)
 );
 
+-- Barista chat conversation persistence (ThreadStore backing).
+-- Ownership key: the platform's x-forwarded-user value (what the agents
+-- plugin resolves as the thread userId). RLS is default-deny for per-user
+-- pools; all app reads carry an explicit user_email filter (B1 lesson).
+CREATE TABLE IF NOT EXISTS cofee_shop.chat_threads (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_email TEXT NOT NULL,
+  title      TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS cofee_shop.chat_messages (
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  thread_id  TEXT NOT NULL REFERENCES cofee_shop.chat_threads(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL,
+  content    TEXT NOT NULL DEFAULT '',
+  tool_name  TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS chat_messages_thread_idx ON cofee_shop.chat_messages (thread_id, id);
+
+
 CREATE INDEX IF NOT EXISTS menu_items_store_cat_idx ON cofee_shop.menu_items (store_id, category);
 CREATE INDEX IF NOT EXISTS orders_store_status_idx ON cofee_shop.orders (store_id, status, created_at);
 CREATE INDEX IF NOT EXISTS orders_user_idx ON cofee_shop.orders (user_email, created_at);
@@ -173,6 +197,29 @@ CREATE POLICY preferences_staff_read ON cofee_shop.customer_preferences
   FOR SELECT
   USING (EXISTS (SELECT 1 FROM cofee_shop.staff s WHERE s.email = current_user));
 
+ALTER TABLE cofee_shop.chat_threads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cofee_shop.chat_messages ENABLE ROW LEVEL SECURITY;
+
+-- Default-deny for per-user pools (their current_user is the email form,
+-- which never matches the x-forwarded-user ownership key stored here).
+-- The app SP (table owner) bypasses RLS and carries explicit user_email
+-- filters in every query.
+DROP POLICY IF EXISTS chat_threads_owner ON cofee_shop.chat_threads;
+CREATE POLICY chat_threads_owner ON cofee_shop.chat_threads
+  FOR ALL
+  USING (user_email = current_user)
+  WITH CHECK (user_email = current_user);
+
+DROP POLICY IF EXISTS chat_messages_owner ON cofee_shop.chat_messages;
+CREATE POLICY chat_messages_owner ON cofee_shop.chat_messages
+  FOR ALL
+  USING (EXISTS (SELECT 1 FROM cofee_shop.chat_threads t
+                 WHERE t.id = chat_messages.thread_id
+                   AND t.user_email = current_user))
+  WITH CHECK (EXISTS (SELECT 1 FROM cofee_shop.chat_threads t
+                      WHERE t.id = chat_messages.thread_id
+                        AND t.user_email = current_user));
+
 DROP POLICY IF EXISTS menu_read_public ON cofee_shop.menu_items;
 CREATE POLICY menu_read_public ON cofee_shop.menu_items FOR SELECT USING (true);
 
@@ -207,6 +254,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.menu_items TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON cofee_shop.orders TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON cofee_shop.order_items TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.customer_preferences TO PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.chat_threads TO PUBLIC;
+GRANT SELECT, INSERT, DELETE ON cofee_shop.chat_messages TO PUBLIC;
 `;
 
 /**

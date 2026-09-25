@@ -10,6 +10,7 @@ import { createApp, lakebase, server, serving, toPlugin } from '@databricks/appk
 import { agents } from '@databricks/appkit/beta';
 import { barista, setBaristaEmbeddings } from './agents/barista';
 import { CoffeeToolsPlugin, setCoffeeToolsDb } from './plugins/coffee-tools';
+import { createLakebaseThreadStore, setThreadStoreDb } from './lib/thread-store';
 import { initializeDatabase } from './db';
 import { registerCoffeeRoutes } from './routes';
 import type { EmbeddingsInvoker } from './lib/embed';
@@ -17,7 +18,7 @@ import type { EmbeddingsInvoker } from './lib/embed';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- runtime value unused; kept for the exported type
 const appkit = await createApp({
   plugins: [
-    agents({ agents: { barista } }),
+    agents({ agents: { barista }, threadStore: createLakebaseThreadStore() }),
     lakebase(),
     serving({ endpoints: { embeddings: { env: 'EMBEDDING_ENDPOINT_NAME' } } }),
     server(),
@@ -41,12 +42,14 @@ const appkit = await createApp({
       },
     };
     setBaristaEmbeddings(embeddings);
-    setCoffeeToolsDb({
+    const routingDb = {
       query: async <T = unknown>(t: string, v?: unknown[]) => {
         const r = await handle.lakebase.query(t, v);
         return { rows: r.rows as T[], rowCount: r.rowCount };
       },
-    });
+    };
+    setCoffeeToolsDb(routingDb);
+    setThreadStoreDb(routingDb);
     await initializeDatabase(spDb, embeddings);
     registerCoffeeRoutes(handle, embeddings);
   },

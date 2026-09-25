@@ -110,6 +110,21 @@ export interface Preference {
   updated_at: string;
 }
 
+export interface ChatThreadSummary {
+  id: string;
+  userId: string;
+  title?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages?: {
+    id: string;
+    role: 'user' | 'assistant' | 'tool' | 'system';
+    content: string;
+    toolCallId?: string;
+    createdAt: string;
+  }[];
+}
+
 export interface StatusResponse {
   agent: {
     name: string;
@@ -197,6 +212,10 @@ export const api = {
   history: (storeId?: string) =>
     req<HistorySummary>(`/api/history/summary${storeId ? `?store_id=${encodeURIComponent(storeId)}` : ''}`),
   status: () => req<StatusResponse>('/api/status'),
+  chatThreads: () => req<{ threads: ChatThreadSummary[] }>('/api/agents/threads'),
+  chatThread: (id: string) => req<ChatThreadSummary>(`/api/agents/threads/${encodeURIComponent(id)}`),
+  deleteChatThread: (id: string) =>
+    req<{ deleted: boolean }>(`/api/agents/threads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   preferences: () => req<Preference[]>('/api/preferences'),
   savePreference: (key: string, value: string, note = '') =>
     req<Preference>('/api/preferences', {
