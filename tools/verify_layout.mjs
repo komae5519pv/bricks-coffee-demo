@@ -118,9 +118,7 @@ await m.waitForTimeout(800);
 const mobile = await m.evaluate(() => ({
   noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth + 1,
   headerPinned: document.querySelector('header')?.getBoundingClientRect().top === 0,
-  chatVisible: [...document.querySelectorAll('*')].some(
-    (e) => e.textContent === 'AI バリスタに相談' && e.getBoundingClientRect().top < innerHeight * 2,
-  ),
+  chatVisible: !!document.querySelector('[data-chat-fab]'), // chat is a floating overlay now (FAB)
 }));
 console.log('mobile:', JSON.stringify(mobile));
 if (!mobile.noHorizontalOverflow) failures.push('mobile: horizontal overflow');

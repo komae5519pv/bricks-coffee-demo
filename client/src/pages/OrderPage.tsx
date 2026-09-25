@@ -1,25 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, CardContent, Input } from '@databricks/appkit-ui/react';
-import { Coffee, Minus, Plus, RotateCcw, Search, ShoppingCart, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
+import { Coffee, MessageCircle, Minus, Plus, RotateCcw, Search, ShoppingCart, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
 import { api, fmtPrice, fmtPriceKcal, type MenuItem, type Order, type Store } from '../lib/api';
 import { computeFrequent } from '../lib/personalize';
 import { cartTotals } from '../lib/cart';
-import { BaristaChat } from '../components/BaristaChat';
+import { useCart } from '../lib/cart-store';
+import { setStoreId, useStoreId } from '../lib/current-store';
 import { MenuImage } from '../components/MenuImage';
 import { groupByItemKey, defaultSku, type ProductGroup } from '../lib/menu-group';
-
-interface CartLine {
-  sku: string;
-  item_name: string;
-  size: string;
-  unit_price: number;
-  currency: string;
-  quantity: number;
-  /** per-unit calories; 0 = no nutrition data (kcal display hidden) */
-  kcal: number;
-}
-
-const STORE_KEY = 'daiwt-coffee-store';
 
 /**
  * One product per card. Sizes are chips inside the card (カテゴリチップと
@@ -66,13 +54,13 @@ function ProductCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: Menu
 
 export function OrderPage() {
   const [stores, setStores] = useState<Store[]>([]);
-  const [storeId, setStoreId] = useState<string>(() => localStorage.getItem(STORE_KEY) ?? '');
+  const storeId = useStoreId();
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState<string>('');
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [searchMode, setSearchMode] = useState<'semantic' | 'fallback'>('fallback');
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const { cart, add: addToCart, bump, clear } = useCart();
   const [customerName, setCustomerName] = useState('');
   const [notice, setNotice] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -90,7 +78,6 @@ export function OrderPage() {
 
   useEffect(() => {
     if (!storeId) return;
-    localStorage.setItem(STORE_KEY, storeId);
     api.categories(storeId).then(setCategories).catch(() => setCategories([]));
   }, [storeId]);
 
@@ -135,25 +122,6 @@ export function OrderPage() {
     });
     return groupByItemKey(filtered);
   }, [menu, maxKcal, lowFat, highProtein, scene, flag]);
-
-  const addToCart = (item: MenuItem) => {
-    setCart((prev) => {
-      const found = prev.find((l) => l.sku === item.sku);
-      if (found) return prev.map((l) => (l.sku === item.sku ? { ...l, quantity: l.quantity + 1 } : l));
-      return [
-        ...prev,
-        {
-          sku: item.sku,
-          item_name: item.item_name,
-          size: item.size,
-          unit_price: Number(item.price),
-          kcal: item.calories_kcal ?? 0,
-          currency: item.currency,
-          quantity: 1,
-        },
-      ];
-    });
-  };
 
   // パーソナライズ: 本人の履歴 (/api/orders は OBO+RLS で本人分のみ)
   const [orders, setOrders] = useState<Order[]>([]);
@@ -202,14 +170,6 @@ export function OrderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingReorder, loading, menu, lastOrder, storeId]);
 
-  const bump = (sku: string, delta: number) => {
-    setCart((prev) =>
-      prev
-        .map((l) => (l.sku === sku ? { ...l, quantity: l.quantity + delta } : l))
-        .filter((l) => l.quantity > 0),
-    );
-  };
-
   const { total, totalKcal } = useMemo(() => cartTotals(cart), [cart]);
   const cartCount = useMemo(() => cart.reduce((s, l) => s + l.quantity, 0), [cart]);
   const currency = cart[0]?.currency ?? store?.currency ?? 'JPY';
@@ -222,7 +182,7 @@ export function OrderPage() {
         customerName.trim(),
         cart.map((l) => ({ sku: l.sku, quantity: l.quantity })),
       );
-      setCart([]);
+      clear();
       setNotice(`注文 #${order.id.slice(0, 8)} を受け付けました(合計 ${fmtPrice(order.total_price, order.currency)})。キッチンが調理を始めます。`);
     } catch (e) {
       setNotice(e instanceof Error ? e.message : String(e));
@@ -240,7 +200,7 @@ export function OrderPage() {
           <select
             className="h-11 sm:h-9 w-full sm:w-auto max-w-full rounded-md border bg-background px-3 text-sm"
             value={storeId}
-            onChange={(e) => { setStoreId(e.target.value); setCart([]); setCategory(''); }}
+            onChange={(e) => { setStoreId(e.target.value); clear(); setCategory(''); }}
           >
             {stores.map((s) => (
               <option key={s.store_id} value={s.store_id}>
@@ -396,45 +356,54 @@ export function OrderPage() {
         )}
       </div>
 
-      {/* Right column: cart + chat stick to the viewport on desktop. Cart
-          keeps its natural height (internal scroll when long), the chat gets
-          the remaining height with its own internal scroll. */}
-      <div className="space-y-4 lg:sticky lg:top-[4.5rem] lg:self-start lg:flex lg:max-h-[calc(100vh-5.5rem)] lg:flex-col">
-        <Card className="lg:shrink-0" data-cart>
-          <CardContent className="p-4 space-y-3 lg:max-h-[45vh] lg:overflow-y-auto">
-            <div className="flex items-center gap-2 font-medium">
+      {/* Right column: cart only — the barista chat moved to a floating
+          overlay panel (see App.tsx). Sticky on desktop; only the item list
+          scrolls, so the total and order button never scroll away. */}
+      <div className="lg:sticky lg:top-[4.5rem] lg:self-start">
+        {/* max-h lives on the Card (its own py-6 padding counts toward the
+            budget); CardContent flexes inside it. */}
+        <Card data-cart className="lg:max-h-[calc(100vh-5.5rem)]">
+          <CardContent className="p-4 space-y-3 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+            <div className="flex items-center gap-2 font-medium shrink-0">
               <ShoppingCart className="h-4 w-4" /> カート
               {cart.length > 0 && (
-                <button className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px] sm:min-h-0" onClick={() => setCart([])}>
+                <button className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px] sm:min-h-0" onClick={clear}>
                   <Trash2 className="h-3.5 w-3.5" /> クリア
                 </button>
               )}
             </div>
             {cart.length === 0 ? (
-              <p className="text-sm text-muted-foreground">メニューから追加してください</p>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">メニューから追加してください</p>
+                <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <MessageCircle className="h-3.5 w-3.5" /> 右下のボタンから AI バリスタに相談できます
+                </p>
+              </div>
             ) : (
               <>
-                {cart.map((l) => (
-                  <div key={l.sku} className="flex items-center gap-2 text-sm">
-                    <div className="flex-1">
-                      <div>{l.item_name}{l.size !== 'N/A' ? ` (${l.size})` : ''}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {fmtPrice(l.unit_price, l.currency)}
-                        {l.kcal > 0 && ` / ${l.kcal * l.quantity}kcal`}
+                <div className="space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                  {cart.map((l) => (
+                    <div key={l.sku} data-cart-line className="flex items-center gap-2 text-sm">
+                      <div className="flex-1">
+                        <div>{l.item_name}{l.size !== 'N/A' ? ` (${l.size})` : ''}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {fmtPrice(l.unit_price, l.currency)}
+                          {l.kcal > 0 && ` / ${l.kcal * l.quantity}kcal`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" title="数量を減らす" className="h-11 w-11 sm:h-7 sm:w-7" onClick={() => bump(l.sku, -1)}>
+                          <Minus className="h-3.5 w-3.5" />
+                        </Button>
+                        <span data-cart-qty className="w-5 text-center">{l.quantity}</span>
+                        <Button size="icon" variant="ghost" title="数量を増やす" className="h-11 w-11 sm:h-7 sm:w-7" onClick={() => bump(l.sku, 1)}>
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-7 sm:w-7" onClick={() => bump(l.sku, -1)}>
-                        <Minus className="h-3.5 w-3.5" />
-                      </Button>
-                      <span className="w-5 text-center">{l.quantity}</span>
-                      <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-7 sm:w-7" onClick={() => bump(l.sku, 1)}>
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                <div className="border-t pt-2 flex justify-between font-semibold">
+                  ))}
+                </div>
+                <div className="border-t pt-2 flex justify-between font-semibold shrink-0">
                   <span>合計</span>
                   <span>
                     {fmtPrice(total, currency)}
@@ -442,23 +411,19 @@ export function OrderPage() {
                   </span>
                 </div>
                 <Input
+                  className="shrink-0"
                   placeholder="お名前(呼び出し用)"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 />
-                <Button className="w-full" disabled={!customerName.trim()} onClick={() => void placeOrder()}>
+                <Button className="w-full shrink-0" disabled={!customerName.trim()} onClick={() => void placeOrder()}>
                   <Coffee className="h-4 w-4 mr-1.5" /> この内容で注文する
                 </Button>
               </>
             )}
-            {notice && <p className="text-xs text-muted-foreground border-t pt-2">{notice}</p>}
+            {notice && <p className="text-xs text-muted-foreground border-t pt-2 shrink-0">{notice}</p>}
           </CardContent>
         </Card>
-
-        <div className="lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
-          <h3 className="text-sm font-medium mb-2 shrink-0">AI バリスタに相談</h3>
-          <BaristaChat storeId={storeId || null} onAddToCart={addToCart} />
-        </div>
       </div>
 
       {/* Mobile-only floating cart bar: the right column (cart) stacks far

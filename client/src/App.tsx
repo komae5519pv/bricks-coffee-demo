@@ -1,5 +1,5 @@
-import { createBrowserRouter, RouterProvider, NavLink, Outlet } from 'react-router';
-import { useEffect, useState } from 'react';
+import { createBrowserRouter, RouterProvider, NavLink, Outlet, useLocation } from 'react-router';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Button,
   Sheet,
@@ -8,8 +8,10 @@ import {
   SheetTitle,
   useIsMobile,
 } from '@databricks/appkit-ui/react';
-import { Activity, BarChart3, ChefHat, ClipboardList, Coffee, Menu, Settings2 } from 'lucide-react';
+import { Activity, BarChart3, ChefHat, ClipboardList, Coffee, Menu, MessageCircle, Settings2 } from 'lucide-react';
 import { api, type Me } from './lib/api';
+import { CartContext, useCart, useCartState } from './lib/cart-store';
+import { BaristaChat } from './components/BaristaChat';
 import { OrderPage } from './pages/OrderPage';
 import { MyOrdersPage } from './pages/MyOrdersPage';
 import { BoardPage } from './pages/BoardPage';
@@ -73,13 +75,31 @@ function NavLinks({
   );
 }
 
+function CartProvider({ children }: { children: ReactNode }) {
+  const value = useCartState();
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+}
+
 function Layout() {
+  return (
+    <CartProvider>
+      <LayoutShell />
+    </CartProvider>
+  );
+}
+
+function LayoutShell() {
   const isMobile = useIsMobile();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   // デモ用表示切替: スタッフが「お客さん表示」をプレビューできる(表示だけ。
   // 実際のロール・サーバー側の認可は変わらない)。
   const [previewRole, setPreviewRole] = useState<'customer' | 'staff'>('staff');
+  const [chatOpen, setChatOpen] = useState(false);
+  const { cart } = useCart();
+  const cartCount = cart.reduce((s, l) => s + l.quantity, 0);
+  const { pathname } = useLocation();
+  const isOrderPage = pathname === '/';
 
   useEffect(() => {
     api.me().then(setMe).catch(() => setMe(null));
@@ -160,6 +180,39 @@ function Layout() {
       <main className="flex-1 p-4 md:p-6">
         <Outlet context={me} />
       </main>
+
+      {/* Floating barista chat: one instance for the whole app, so the
+          conversation (and the panel's open state) survives page navigation.
+          The FAB lifts above the mobile floating cart bar when the cart is
+          non-empty (the bar is order-page-only). */}
+      {!chatOpen && (
+        <button
+          data-chat-fab
+          type="button"
+          title="AI バリスタに相談"
+          onClick={() => setChatOpen(true)}
+          className={`fixed right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full border bg-primary text-primary-foreground shadow-lg transition-all lg:right-6 lg:bottom-6 ${
+            isOrderPage && cartCount > 0 ? 'bottom-[4.75rem]' : 'bottom-4'
+          }`}
+        >
+          <MessageCircle className="h-5 w-5" />
+        </button>
+      )}
+      {/* Non-modal overlay: no backdrop and no outside-click close — the
+          panel stays open while the user browses the menu and edits the
+          cart; only the header's close button dismisses it. Kept mounted
+          (hidden) when closed so messages and any in-flight stream survive.
+          Below lg it's a near-fullscreen sheet; on desktop it's a floating
+          panel docked LEFT of the cart column on the order page so the cart
+          stays visible and operable. */}
+      <div
+        data-chat-panel
+        className={`fixed inset-2 z-40 flex-col overflow-hidden rounded-lg border bg-background shadow-xl lg:inset-auto lg:bottom-6 lg:h-[75vh] lg:max-h-[calc(100vh-3rem)] lg:w-96 xl:w-[420px] ${
+          isOrderPage ? 'lg:right-[404px]' : 'lg:right-6'
+        } ${chatOpen ? 'flex' : 'hidden'}`}
+      >
+        <BaristaChat panelOpen={chatOpen} onClose={() => setChatOpen(false)} />
+      </div>
     </div>
   );
 }

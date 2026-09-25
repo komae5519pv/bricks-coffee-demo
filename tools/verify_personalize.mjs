@@ -86,6 +86,8 @@ if (!/合計/.test(cartAfterReorder)) failures.push('reorder did not land in the
 await page.screenshot({ path: OUT.replace('.png', '-ui.png') });
 
 // ---------- agent: frequent ranking + reorder set ----------
+await page.getByRole('button', { name: 'AI バリスタに相談' }).click(); // chat is a floating overlay now
+await page.getByPlaceholder('バリスタにメッセージ…').waitFor({ timeout: 30000 });
 async function ask(text) {
   await page.getByPlaceholder('バリスタにメッセージ…').fill(text);
   await page.getByRole('button', { name: '送信', exact: true }).click();

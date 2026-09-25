@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * Chat history verification: persistence, browse, resume, new conversation,
- * delete, leak-freedom, and mobile layout.
+ * Chat overlay + history verification: floating panel sizing, non-modal
+ * cart operations, navigation persistence, Lakebase persistence, browse,
+ * resume, new conversation, delete, leak-freedom, and responsive layout
+ * (desktop 1440 / iPad 768 / iPhone 375).
  *
  *   APP_TOKEN=$(databricks auth token --profile fevm-konomi-demo -o json | jq -r .access_token) \
  *     node tools/verify_chat_history.mjs
@@ -10,10 +12,7 @@
  * that GET /api/agents/threads/<id> returns 404 for us.
  *
  * Reply-content assertions go through /api/agents/threads/:id (the DB-backed
- * read path), not the DOM, so they are independent of rendering. This is the
- * regression check for the "new thread -> LLM gets only the system message"
- * bug: if the user message never reaches the model, the reply cannot mention
- * the drinks/calories we asked about.
+ * read path), not the DOM, so they are independent of rendering.
  */
 import { chromium } from '@playwright/test';
 
@@ -45,6 +44,9 @@ const ctx = await browser.newContext({
 const page = await ctx.newPage();
 track(page);
 
+const panel = page.locator('[data-chat-panel]');
+const fab = page.getByRole('button', { name: 'AI バリスタに相談' });
+
 async function ask(text) {
   await page.getByPlaceholder('バリスタにメッセージ…').fill(text);
   await page.getByRole('button', { name: '送信', exact: true }).click();
@@ -55,6 +57,8 @@ async function ask(text) {
 const getThreads = () => page.evaluate(async () => fetch('/api/agents/threads').then((r) => r.json()));
 const getThread = (id) => page.evaluate(async (tid) => fetch(`/api/agents/threads/${tid}`).then((r) => r.json()), id);
 const lastAssistant = (thread) => [...(thread.messages ?? [])].reverse().find((m) => m.role === 'assistant');
+const cartCount = async () =>
+  (await page.locator('[data-cart-qty]').allTextContents()).reduce((s, t) => s + Number(t), 0);
 
 // Node-side fetch for the intentional 404 probes — doing them inside the page
 // would log "Failed to load resource: 404" console errors and trip the
@@ -62,15 +66,36 @@ const lastAssistant = (thread) => [...(thread.messages ?? [])].reverse().find((m
 const apiStatus = (path) =>
   fetch(`${APP}${path}`, { headers: { Authorization: `Bearer ${TOKEN}` } }).then((r) => r.status);
 
-// ---------- 1. new conversation -> barista answers the FIRST message ----------
-// (regression: empty thread.messages meant the LLM never saw the question)
+// ---------- 1. 6+ items in the cart, then open the overlay panel ----------
 await page.goto(APP, { waitUntil: 'networkidle', timeout: 60000 });
-await page.getByPlaceholder('バリスタにメッセージ…').waitFor({ timeout: 30000 });
-await ask(FIRST_Q);
-await page.screenshot({ path: '/tmp/chat-history-first-reply.png' });
+await page.getByRole('button', { name: '追加' }).first().waitFor({ timeout: 30000 });
+const firstAdd = page.getByRole('button', { name: '追加' }).first();
+for (let i = 0; i < 6; i++) await firstAdd.click();
+await page.waitForTimeout(500);
+const count6 = await cartCount();
+console.log('cart count after 6 adds:', count6);
+if (count6 !== 6) failures.push(`cart count after 6 adds = ${count6}`);
 
+await fab.click();
+await page.getByPlaceholder('バリスタにメッセージ…').waitFor({ timeout: 30000 });
+const panelBox = await panel.boundingBox();
+const cartBox = await page.locator('[data-cart]').boundingBox();
+console.log(
+  'panel:',
+  panelBox && `${Math.round(panelBox.width)}x${Math.round(panelBox.height)} @ (${Math.round(panelBox.x)},${Math.round(panelBox.y)})`,
+  '| cart x:',
+  cartBox && Math.round(cartBox.x),
+);
+if (!panelBox || panelBox.width < 380) failures.push(`panel too narrow (${panelBox?.width})`);
+if (!panelBox || panelBox.height < 500) failures.push(`panel too short (${panelBox?.height})`);
+if (panelBox && (panelBox.x < 0 || panelBox.x + panelBox.width > 1441)) failures.push('panel overflows the viewport');
+if (panelBox && cartBox && panelBox.x + panelBox.width > cartBox.x + 1) failures.push('panel overlaps the cart column');
+await page.screenshot({ path: '/tmp/chat-overlay-cart6-panel.png' });
+
+// ---------- 2. first question -> barista answers (LLM-payload regression) ----------
+await ask(FIRST_Q);
 const list1 = await getThreads();
-console.log('threads after Q1:', list1.threads.length, '| titles:', list1.threads.map((t) => t.title));
+console.log('threads after Q1:', list1.threads.length, '| newest title:', list1.threads[0]?.title);
 const t1 = list1.threads[0];
 if (!t1) failures.push('no thread persisted after first message');
 if (t1 && !t1.title.includes('アイスコーヒー')) failures.push(`title not from first message: ${t1.title}`);
@@ -78,30 +103,47 @@ if (t1) {
   const full = await getThread(t1.id);
   const reply = lastAssistant(full)?.content ?? '';
   console.log('Q1 reply length:', reply.length, '| mentions drinks:', /抹茶|アイスコーヒー/.test(reply));
-  if (reply.length < 30) failures.push(`first reply too short (${reply.length} chars) — LLM may not have seen the question`);
-  if (!/抹茶|アイスコーヒー/.test(reply)) failures.push('first reply does not mention the asked drinks — question did not reach the LLM');
+  if (reply.length < 30) failures.push(`first reply too short (${reply.length} chars)`);
+  if (!/抹茶|アイスコーヒー/.test(reply)) failures.push('first reply does not mention the asked drinks');
 }
+await page.screenshot({ path: '/tmp/chat-overlay-first-reply.png' });
 
-// ---------- 2. reload -> history survives (persistence) ----------
+// ---------- 3. NON-MODAL: add to cart + edit quantities with the panel open ----------
+await page.getByRole('button', { name: '追加' }).nth(1).click();
+await page.waitForTimeout(500);
+const count7 = await cartCount();
+await page.locator('[data-cart-line]').first().getByRole('button', { name: '数量を増やす' }).click();
+await page.waitForTimeout(500);
+const count8 = await cartCount();
+console.log('cart ops with panel open: after add', count7, '| after bump', count8);
+if (count7 !== 7) failures.push(`add-to-cart with panel open failed (count=${count7})`);
+if (count8 !== 8) failures.push(`cart quantity edit with panel open failed (count=${count8})`);
+const inputStillThere = await page.getByPlaceholder('バリスタにメッセージ…').count();
+if (inputStillThere === 0) failures.push('panel vanished during background cart ops');
+await page.screenshot({ path: '/tmp/chat-overlay-nonmodal-cart.png' });
+
+// ---------- 4. reload -> history survives (persistence) ----------
 await page.reload({ waitUntil: 'networkidle' });
+await fab.click();
 await page.getByPlaceholder('バリスタにメッセージ…').waitFor({ timeout: 30000 });
 await page.getByRole('button', { name: '履歴' }).click();
 await page.waitForTimeout(1500);
 const sheetHasT1 = t1 ? await page.getByText(t1.title, { exact: false }).count() : 0;
 console.log('history sheet shows thread:', sheetHasT1);
 if (t1 && sheetHasT1 === 0) failures.push('thread not visible in history sheet after reload');
-await page.screenshot({ path: '/tmp/chat-history-sheet.png' });
+await page.screenshot({ path: '/tmp/chat-overlay-sheet.png' });
 
-// ---------- 3. load thread -> messages render + resume WITH context ----------
+// ---------- 5. load thread -> messages render + resume WITH context ----------
 if (t1) {
   await page.getByText(t1.title, { exact: false }).first().click();
   await page.waitForTimeout(1500);
-  const rendered = await page.evaluate(() => document.body.innerText.includes('アイスコーヒー') && document.body.innerText.includes('抹茶ラテ'));
+  const rendered = await page.evaluate(
+    () => document.body.innerText.includes('アイスコーヒー') && document.body.innerText.includes('抹茶ラテ'),
+  );
   console.log('loaded messages render:', rendered);
   if (!rendered) failures.push('loaded thread messages did not render');
-  await page.screenshot({ path: '/tmp/chat-history-loaded.png' });
+  await page.screenshot({ path: '/tmp/chat-overlay-loaded.png' });
 
-  // resume: follow-up continues the SAME thread and the model sees the history
   await ask(RESUME_Q);
   const list2 = await getThreads();
   const sameThread = list2.threads.some((t) => t.id === t1.id);
@@ -110,32 +152,44 @@ if (t1) {
   console.log('resume: same thread kept:', sameThread, '| messages in t1:', t1full.messages?.length);
   console.log('resume reply references a drink:', /アイスコーヒー|抹茶ラテ/.test(resumeReply));
   if (!sameThread) failures.push('resume lost the thread');
-  if ((t1full.messages?.length ?? 0) < 4) failures.push(`resume did not append to thread (messages=${t1full.messages?.length})`);
-  if (!/アイスコーヒー|抹茶ラテ/.test(resumeReply)) failures.push('resume reply lacks context (no drink reference) — history did not reach the LLM');
-  await page.screenshot({ path: '/tmp/chat-history-resumed.png' });
+  if ((t1full.messages?.length ?? 0) < 4) failures.push(`resume did not append (messages=${t1full.messages?.length})`);
+  if (!/アイスコーヒー|抹茶ラテ/.test(resumeReply)) failures.push('resume reply lacks context (no drink reference)');
 }
 
-// ---------- 4. new conversation -> separate thread, barista answers there too ----------
+// ---------- 6. NAVIGATION: conversation survives page transitions ----------
+await page.getByRole('link', { name: 'マイ注文' }).click();
+await page.waitForTimeout(1500);
+const onOrders = await page.evaluate(() => ({
+  inputVisible: !!document.querySelector('[placeholder="バリスタにメッセージ…"]'),
+  messagesKept: document.body.innerText.includes('アイスコーヒー'),
+}));
+console.log('after nav to マイ注文:', JSON.stringify(onOrders));
+if (!onOrders.inputVisible) failures.push('panel did not survive navigation to マイ注文');
+if (!onOrders.messagesKept) failures.push('conversation lost on navigation');
+await page.screenshot({ path: '/tmp/chat-overlay-myorders.png' });
+await page.getByRole('link', { name: '注文する' }).click();
+await page.waitForTimeout(1500);
+
+// ---------- 7. new conversation -> separate thread, barista answers ----------
 await page.getByRole('button', { name: '新しい会話' }).click();
 await page.waitForTimeout(500);
 const cleared = await page.evaluate(() => document.body.innerText.includes('バリスタに話しかけてみましょう'));
 console.log('new conversation resets view:', cleared);
 if (!cleared) failures.push('new conversation did not reset the view');
-// read-only question: an order here would park the stream on the approval gate
 await ask(NEW_Q);
 const list3 = await getThreads();
 console.log('threads after new conversation:', list3.threads.length);
-if (list3.threads.length < 2) failures.push(`new conversation did not create a separate thread (${list3.threads.length})`);
 const other = list3.threads.find((t) => t1 && t.id !== t1.id);
+if (!other) failures.push('new conversation did not create a separate thread');
 if (other) {
   const full = await getThread(other.id);
   const reply = lastAssistant(full)?.content ?? '';
   const hasCalorie = /kcal|カロリー/.test(reply) && /抹茶/.test(reply);
   console.log('new thread reply mentions 抹茶+calorie:', hasCalorie, '| length:', reply.length);
-  if (!hasCalorie) failures.push('new-thread reply does not answer the calorie question — question did not reach the LLM');
+  if (!hasCalorie) failures.push('new-thread reply does not answer the calorie question');
 }
 
-// ---------- 5. delete with confirm ----------
+// ---------- 8. delete with confirm ----------
 await page.getByRole('button', { name: '履歴' }).click();
 await page.waitForTimeout(1000);
 page.once('dialog', (d) => void d.accept());
@@ -154,10 +208,10 @@ if (t1) {
   console.log('deleted thread GET status:', gone);
   if (gone !== 404) failures.push(`deleted thread still fetchable (status ${gone})`);
 }
-await page.screenshot({ path: '/tmp/chat-history-after-delete.png' });
+await page.screenshot({ path: '/tmp/chat-overlay-after-delete.png' });
 await page.keyboard.press('Escape');
 
-// ---------- 6. leak check: single-owner list + optional foreign-thread 404 ----------
+// ---------- 9. leak check: single-owner list + optional foreign-thread 404 ----------
 {
   const list = await getThreads();
   const foreignLeak = list.threads.filter((t) => t.userId !== list.threads[0]?.userId).length;
@@ -172,25 +226,52 @@ if (process.env.FOREIGN_THREAD_ID) {
 
 await page.close();
 
-// ---------- 7. mobile 375 ----------
-const m = await browser.newContext({
-  extraHTTPHeaders: { Authorization: `Bearer ${TOKEN}` },
-  viewport: { width: 375, height: 812 },
-});
-const mp = await m.newPage();
-track(mp);
-await mp.goto(APP, { waitUntil: 'networkidle', timeout: 60000 });
-await mp.waitForTimeout(2000);
-const mobileOverflow = await mp.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
-await mp.getByRole('button', { name: '履歴' }).click();
-await mp.waitForTimeout(1000);
-const sheetVisible = await mp.getByText('会話の履歴').count();
-const mobileOverflowAfter = await mp.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
-console.log('mobile: overflow', mobileOverflow, '| sheet opens', sheetVisible, '| overflow after sheet', mobileOverflowAfter);
-if (mobileOverflow || mobileOverflowAfter) failures.push('mobile horizontal overflow with history UI');
-if (sheetVisible === 0) failures.push('mobile: history sheet did not open');
-await mp.screenshot({ path: '/tmp/chat-history-mobile.png' });
-await m.close();
+// ---------- 10. iPad 768: overlay opens and stays within the viewport ----------
+{
+  const c = await browser.newContext({
+    extraHTTPHeaders: { Authorization: `Bearer ${TOKEN}` },
+    viewport: { width: 768, height: 1024 },
+  });
+  const p = await c.newPage();
+  track(p);
+  await p.goto(APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await p.getByRole('button', { name: 'AI バリスタに相談' }).click();
+  await p.getByPlaceholder('バリスタにメッセージ…').waitFor({ timeout: 30000 });
+  const box = await p.locator('[data-chat-panel]').boundingBox();
+  const overflow = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
+  console.log('ipad: panel', box && `${Math.round(box.width)}x${Math.round(box.height)}`, '| page overflow:', overflow);
+  if (!box || box.x < 0 || box.x + box.width > 769) failures.push('ipad: panel overflows the viewport');
+  if (overflow) failures.push('ipad: horizontal page overflow with panel open');
+  await p.screenshot({ path: '/tmp/chat-overlay-ipad.png' });
+  await c.close();
+}
+
+// ---------- 11. iPhone 375: near-fullscreen sheet + history works ----------
+{
+  const c = await browser.newContext({
+    extraHTTPHeaders: { Authorization: `Bearer ${TOKEN}` },
+    viewport: { width: 375, height: 812 },
+  });
+  const p = await c.newPage();
+  track(p);
+  await p.goto(APP, { waitUntil: 'networkidle', timeout: 60000 });
+  await p.waitForTimeout(1500);
+  const overflowBefore = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
+  await p.getByRole('button', { name: 'AI バリスタに相談' }).click();
+  await p.getByPlaceholder('バリスタにメッセージ…').waitFor({ timeout: 30000 });
+  const box = await p.locator('[data-chat-panel]').boundingBox();
+  console.log('mobile: sheet', box && `${Math.round(box.width)}x${Math.round(box.height)}`);
+  if (!box || box.width < 340 || box.height < 700) failures.push(`mobile: sheet not near-fullscreen (${box?.width}x${box?.height})`);
+  await p.getByRole('button', { name: '履歴' }).click();
+  await p.waitForTimeout(1000);
+  const sheetVisible = await p.getByText('会話の履歴').count();
+  const overflowAfter = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
+  console.log('mobile: overflow', overflowBefore, '| history sheet opens', sheetVisible, '| overflow after', overflowAfter);
+  if (overflowBefore || overflowAfter) failures.push('mobile: horizontal overflow with overlay UI');
+  if (sheetVisible === 0) failures.push('mobile: history sheet did not open');
+  await p.screenshot({ path: '/tmp/chat-overlay-mobile.png' });
+  await c.close();
+}
 
 await browser.close();
 console.log('console errors:', consoleErrors.length ? consoleErrors : 'none');
@@ -200,4 +281,4 @@ if (failures.length) {
   process.exit(1);
 }
 console.log('VERIFICATION PASSED');
-console.log('screenshots: /tmp/chat-history-{first-reply,sheet,loaded,resumed,after-delete,mobile}.png');
+console.log('screenshots: /tmp/chat-overlay-*.png');

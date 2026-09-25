@@ -28,6 +28,7 @@ page.on('console', (m) => {
 page.on('pageerror', (e) => consoleErrors.push(String(e)));
 
 await page.goto(APP, { waitUntil: 'networkidle', timeout: 60000 });
+await page.getByRole('button', { name: 'AI バリスタに相談' }).click(); // chat is a floating overlay now
 await page.getByPlaceholder('バリスタにメッセージ…').waitFor({ timeout: 30000 });
 
 async function ask(text) {

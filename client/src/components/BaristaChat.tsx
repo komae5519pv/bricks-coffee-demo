@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   type AgentChatEvent,
   Button,
-  Card,
-  CardContent,
   Input,
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from '@databricks/appkit-ui/react';
-import { Check, History, Plus, ShieldQuestion, Trash2, X } from 'lucide-react';
+import { Check, History, MessageCircle, Plus, ShieldQuestion, Trash2, X } from 'lucide-react';
 import { api, fmtPrice, fmtPriceKcal, type ChatThreadSummary, type MenuItem } from '../lib/api';
 import { defaultSku, groupByItemKey, type ProductGroup } from '../lib/menu-group';
+import { useStoreId } from '../lib/current-store';
+import { useCart } from '../lib/cart-store';
 import { MenuImage } from './MenuImage';
 
 interface Message {
@@ -232,18 +233,17 @@ function useSeedableAgentChat({
 }
 
 /**
- * Chat surface for the on-app barista agent. Mutating tool calls (placing
- * an order, changing a status) pause on the agents plugin's approval gate.
+ * Chat surface for the on-app barista agent, rendered inside the layout's
+ * floating overlay panel (see App.tsx). Mutating tool calls (placing an
+ * order, changing a status) pause on the agents plugin's approval gate.
  * Assistant text renders as Markdown; search_menu/get_item_details tool
  * results render as actionable product cards (structured data, not parsing).
+ * Store hint comes from the shared selector state; product cards add to the
+ * shared cart — both work from any page the panel floats over.
  */
-export function BaristaChat({
-  storeId,
-  onAddToCart,
-}: {
-  storeId: string | null;
-  onAddToCart?: (item: MenuItem) => void;
-}) {
+export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClose: () => void }) {
+  const storeId = useStoreId();
+  const { add: onAddToCart } = useCart();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [pendingAssistantId, setPendingAssistantId] = useState<string | null>(null);
@@ -337,6 +337,13 @@ export function BaristaChat({
     void refreshThreads();
   }, []);
 
+  // The history sheet renders in a portal above the panel — tuck it away
+  // when the panel itself is closed so it never floats alone. State is
+  // adjusted during rendering (React-sanctioned) instead of in an effect.
+  if (!panelOpen && historyOpen) {
+    setHistoryOpen(false);
+  }
+
   const loadThread = async (t: ChatThreadSummary) => {
     try {
       const full = await api.chatThread(t.id);
@@ -417,25 +424,32 @@ export function BaristaChat({
 
   return (
     <>
-      <Card className="h-[min(560px,65vh)] lg:h-full lg:min-h-0 flex flex-col">
-        <div className="flex items-center justify-end gap-1 border-b px-2 py-1.5 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            title="履歴"
-            onClick={() => {
-              setHistoryOpen(true);
-              void refreshThreads();
-            }}
-          >
-            <History className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="新しい会話" onClick={newConversation}>
-            <Plus className="h-4 w-4" />
-          </Button>
+      {/* Panel header: title left; history / new conversation / close right.
+          The panel chrome itself (fixed overlay container) lives in App.tsx. */}
+      <div className="flex items-center gap-1 border-b px-3 py-2 shrink-0">
+        <div className="mr-auto flex items-center gap-1.5 text-sm font-medium">
+          <MessageCircle className="h-4 w-4 text-primary" /> AI バリスタに相談
         </div>
-        <CardContent className="flex-1 overflow-y-auto p-4 space-y-3" ref={scrollRef}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="履歴"
+          onClick={() => {
+            setHistoryOpen(true);
+            void refreshThreads();
+          }}
+        >
+          <History className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" title="新しい会話" onClick={newConversation}>
+          <Plus className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" title="閉じる" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="text-sm text-muted-foreground mt-6 space-y-2">
             <p className="font-medium text-foreground">バリスタに話しかけてみましょう</p>
@@ -485,7 +499,9 @@ export function BaristaChat({
               {m.role === 'assistant' ? (
                 <div className="text-sm">
                   {m.content ? (
-                    <ReactMarkdown components={mdComponents}>{m.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+                      {m.content}
+                    </ReactMarkdown>
                   ) : isStreaming ? (
                     '…'
                   ) : (
@@ -515,9 +531,9 @@ export function BaristaChat({
             </div>
           </div>
         )}
-      </CardContent>
+      </div>
 
-      <form onSubmit={(e) => void handleSubmit(e)} className="p-3 border-t flex gap-2">
+      <form onSubmit={(e) => void handleSubmit(e)} className="p-3 border-t flex gap-2 shrink-0">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -529,7 +545,6 @@ export function BaristaChat({
         </Button>
       </form>
       {error && <div className="px-3 pb-2 text-sm text-destructive">Error: {error}</div>}
-    </Card>
 
     <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
       <SheetContent side="right" className="w-80 max-w-[85vw] overflow-y-auto">

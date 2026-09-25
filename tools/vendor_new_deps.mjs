@@ -56,9 +56,13 @@ for (const [key, meta] of newEntries) {
   const pkgName = key.replace(/^node_modules\//, '').replace(/\/node_modules\/.+$/, '');
   const nested = key.match(/^node_modules\/(.+)\/node_modules\/(.+)$/);
   if (nested) {
-    // nested instance: override only within the parent package
-    const [, parent, child] = nested;
-    pkgJson.overrides[parent] = { ...(pkgJson.overrides[parent] ?? {}), [child]: `file:vendor/${file}` };
+    // Nested instance (a second major living under its parent). A nested
+    // override object would clobber the parent's own flat override (and a
+    // file: path inside it resolves relative to the PARENT package dir —
+    // broken), so pin the child with a version-scoped top-level override
+    // instead; other majors of the same package stay registry-resolved.
+    const [, , child] = nested;
+    pkgJson.overrides[`${child}@^${version}`] = `file:vendor/${file}`;
   } else {
     pkgJson.overrides[pkgName] = `file:vendor/${file}`;
   }
