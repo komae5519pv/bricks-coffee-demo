@@ -49,6 +49,8 @@ LLM: databricks-claude-sonnet-4-5 / 埋め込み: databricks-qwen3-embedding-0-6
 | historical_orders | 過去注文 7,284行(分析用) | lb_historical_orders_history → ビュー historical_orders |
 | customer_preferences | 嗜好(milk_allergy 等) | lb_customer_preferences_history → ビュー customer_preferences |
 | staff | スタッフ(RLS 判定用) | lb_staff_history (Genie には非公開) |
+| chat_threads | バリスタ会話スレッド(owner=user_email) | **CDC 非対象** |
+| chat_messages | 会話メッセージ(thread_id FK・ON DELETE CASCADE) | **CDC 非対象** |
 
 注: 注文 ID は当初 UUID 型だったが、Lakehouse Sync は uuid を base64 バイナリで複製するため
 TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATION` が冪等に変換)。
@@ -93,6 +95,15 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
 - **注文ページ**: 「前回と同じ」クイックアクション(直近注文をワンクリックでカートに。注文店舗が表示店舗と違う場合は自動で店舗切替)と「よく注文する商品」セクション(×N バッジ付き小カード帯・履歴0件なら非表示)。/api/orders は `user_email = current_user` の明示フィルタで本人分のみ返す(RLS だけに頼らない。global staff でも他者の注文は混ざらない)
 - **ツールの OBO 構成**(重要): バリスタの DB ツールは coffee-tools ツールキットプラグイン経由で実行(`PluginContext.executeTool → asUser(req)` で実行時に本人コンテキスト。inline function tool だと SP 実行になり user_email=SP になってしまうため)
 - **RLS 実証**: 他者注文(other.user@example.com のデモ用注文 bb180140 が存在)があっても、ツールの owner フィルタ(user_email=current_user)では0件・frequent ランキングにも混入しない。/api/orders も owner フィルタで本人分のみ(スタッフの RLS 許可に頼らない)。店舗の全注文が見えるのは /api/board(キッチンボード)経由のみで、これはスタッフ業務としての設計通り
+
+## 会話履歴 (Lakebase 永続化)
+
+バリスタとの会話は Lakebase (chat_threads / chat_messages) に永続化され、アプリ再起動後も残る。
+agents プラグインの ThreadStore を Lakebase 実装に差し替えている(server/lib/thread-store.ts)。
+
+- チャット右上の「履歴」で一覧・過去スレッドの閲覧・**再開**(過去のコンテキストを引いたまま続きを話せる)、「＋」で新規会話、各スレッドの削除(確認ダイアログ付き)
+- タイトルは各スレッドの最初のユーザーメッセージ先頭30文字から自動付与(店舗ヒントは除く)
+- 他人の会話は見えない: 全クエリが user_email 明示フィルタ + chat テーブルの RLS は per-user プールに対し default-deny(実行はアプリ SP プール)
 
 ## 栄養・健康軸 (カロリー・アレルゲン・代替乳)
 
@@ -209,7 +220,6 @@ ETIMEDOUT となりデプロイが失敗したため(手元のネットワーク
 
 ## 既知の制限
 
-- スレッド履歴は InMemoryThreadStore(再起動で消失)。本番用途なら永続ストアを agents() に渡す。
 - menu_items は CDC 対象外(vector 列)。メニュー管理で編集しても Delta 側 menu_items は
   自動更新されない(デモの Genie 参照は seed 時点のメニュー)。
 - 「前回と同じ」のエッジ: 直近注文が他店舗の商品のみの場合、店舗切替後も当該店舗で
