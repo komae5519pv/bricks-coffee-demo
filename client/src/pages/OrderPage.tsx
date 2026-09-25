@@ -189,7 +189,7 @@ export function OrderPage() {
   };
 
   useEffect(() => {
-    if (!pendingReorder || loading || menu.length === 0 || lastOrder?.store_id !== storeId) return;
+    if (!pendingReorder || loading || menu.length === 0 || menu[0]?.store_id !== storeId || lastOrder?.store_id !== storeId) return;
     // sync with the async menu load after the auto store switch — not a
     // cascading render; the cart update waits for external data
     // eslint-disable-next-line react-hooks/set-state-in-effect
