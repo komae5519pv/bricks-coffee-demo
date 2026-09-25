@@ -74,6 +74,15 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
 - 再取得: 自分の Unsplash Access Key を `~/.config/daiwt-coffee-shop/unsplash_access_key`
   に置いて `node tools/fetch_unsplash_images.mjs` を実行(キーは絶対にリポジトリに入れない)。
 
+## パーソナライズ (よく買ってるやつ / 前回と同じ)
+
+本人の注文履歴 (OBO + RLS で本人分のみ) に基づく再注文機能。認証演示とパーソナライズ演示が重なるポイント。
+
+- **バリスタ**: `get_my_frequent_items`(本人履歴の集計・回数付きランキング→画像カードで追加可)と `reorder_last`(直近注文と同じ SKU・数量をセットカードで返し「まとめて追加」)。履歴0件なら「まだ注文履歴がありません」と人気商品を案内
+- **注文ページ**: 「前回と同じ」クイックアクション(直近注文をワンクリックでカートに。注文店舗が表示店舗と違う場合は自動で店舗切替)と「よく注文する商品」セクション(×N バッジ付き小カード帯・履歴0件なら非表示)。/api/orders は OBO+RLS で本人分のみ取得
+- **ツールの OBO 構成**(重要): バリスタの DB ツールは coffee-tools ツールキットプラグイン経由で実行(`PluginContext.executeTool → asUser(req)` で実行時に本人コンテキスト。inline function tool だと SP 実行になり user_email=SP になってしまうため)
+- **RLS 実証**: 他者注文(other.user@example.com のデモ用注文 bb180140 が存在)があっても、ツールの owner フィルタ(user_email=current_user)では0件・frequent ランキングにも混入しない。なお konomi.omae@databricks.com は global staff のため REST /api/orders ではスタッフ権限で店舗の全注文が見える(設計通り)
+
 ## 栄養・健康軸 (カロリー・アレルゲン・代替乳)
 
 SKU 単位で栄養データを保持(実在チェーン相当の妥当な値・全店共通):
