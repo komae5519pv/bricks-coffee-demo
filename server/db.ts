@@ -15,7 +15,7 @@ import { embedTexts, menuEmbeddingText, toVectorLiteral, type EmbeddingsInvoker 
 import { backfillMenuImages } from './lib/images';
 
 export interface BootstrapDb {
-  query<T = any>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
+  query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
 }
 
 const DDL = `

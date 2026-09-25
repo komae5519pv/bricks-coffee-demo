@@ -43,7 +43,7 @@ export interface LakebaseStatus {
 }
 
 interface DbLike {
-  query<T = any>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
+  query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
 }
 
 const STATEMENT_TIMEOUT_MS = 55_000;

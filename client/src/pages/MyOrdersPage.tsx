@@ -51,8 +51,8 @@ export function MyOrdersPage() {
                   )}
                 </div>
                 <div className="text-sm mt-1">
-                  {o.items.map((i, idx) => (
-                    <span key={idx} className="mr-3">
+                  {o.items.map((i) => (
+                    <span key={`${o.id}-${i.sku ?? i.item_name}`} className="mr-3">
                       {i.item_name}{i.size !== 'N/A' ? ` (${i.size})` : ''} ×{i.quantity}
                     </span>
                   ))}

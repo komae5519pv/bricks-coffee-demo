@@ -78,7 +78,7 @@ const menuPatchSchema = menuUpsertSchema.partial().omit({ store_id: true, item_k
 export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvoker): void {
   /** Service-principal pool: public reference data + startup/monitoring queries. */
   const spDb: DbLike = {
-    query: async <T = any>(t: string, v?: unknown[]) => {
+    query: async <T = unknown>(t: string, v?: unknown[]) => {
       const r = await appkit.lakebase.query(t, v);
       return { rows: r.rows as T[], rowCount: r.rowCount };
     },
@@ -90,7 +90,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
    * Security is the authorization layer for every user-scoped route below.
    */
   const userDb = (req: Request): DbLike => ({
-    query: async <T = any>(t: string, v?: unknown[]) => {
+    query: async <T = unknown>(t: string, v?: unknown[]) => {
       const r = await appkit.lakebase.asUser(req).query(t, v);
       return { rows: r.rows as T[], rowCount: r.rowCount };
     },
@@ -163,11 +163,11 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
     /** Distinct categories for the store's active menu. */
     app.get('/api/menu/categories', async (req: Request, res: Response) => {
       try {
-        const { rows } = await spDb.query(
+        const { rows } = await spDb.query<{ category: string }>(
           'SELECT DISTINCT category FROM cofee_shop.menu_items WHERE store_id = $1 AND active ORDER BY category',
           [qstr(req.query.store_id)],
         );
-        res.json(rows.map((r: { category: string }) => r.category));
+        res.json(rows.map((r) => r.category));
       } catch (e) {
         res.status(500).json({ error: String(e) });
       }

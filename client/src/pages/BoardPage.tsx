@@ -55,7 +55,7 @@ export function BoardPage({ me }: { me: Me | null }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <h2 className="text-xl font-bold flex items-center gap-2">
+        <h2 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap">
           <ChefHat className="h-5 w-5" /> キッチンボード
         </h2>
         <select
@@ -87,8 +87,8 @@ export function BoardPage({ me }: { me: Me | null }) {
                       <span className="font-mono text-xs text-muted-foreground">#{o.id.slice(0, 8)}</span>
                     </div>
                     <div className="text-sm">
-                      {o.items.map((i, idx) => (
-                        <div key={idx}>
+                      {o.items.map((i) => (
+                        <div key={`${o.id}-${i.sku ?? i.item_name}`}>
                           {i.item_name}{i.size !== 'N/A' ? ` (${i.size})` : ''} ×{i.quantity}
                         </div>
                       ))}

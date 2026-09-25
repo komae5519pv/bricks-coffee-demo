@@ -35,14 +35,14 @@ const appkit = await createApp({
         handle.serving('embeddings').invoke(body) as ReturnType<EmbeddingsInvoker['invoke']>,
     };
     const spDb = {
-      query: async <T = any>(t: string, v?: unknown[]) => {
+      query: async <T = unknown>(t: string, v?: unknown[]) => {
         const r = await handle.lakebase.query(t, v);
         return { rows: r.rows as T[], rowCount: r.rowCount };
       },
     };
     setBaristaEmbeddings(embeddings);
     setCoffeeToolsDb({
-      query: async <T = any>(t: string, v?: unknown[]) => {
+      query: async <T = unknown>(t: string, v?: unknown[]) => {
         const r = await handle.lakebase.query(t, v);
         return { rows: r.rows as T[], rowCount: r.rowCount };
       },

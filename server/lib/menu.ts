@@ -13,7 +13,7 @@ import {
 } from './embed';
 
 export interface DbLike {
-  query<T = any>(
+  query<T = unknown>(
     text: string,
     values?: unknown[],
   ): Promise<{ rows: T[]; rowCount?: number | null }>;
