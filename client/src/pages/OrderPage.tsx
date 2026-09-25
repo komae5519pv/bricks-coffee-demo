@@ -3,6 +3,7 @@ import { Button, Card, CardContent, Input } from '@databricks/appkit-ui/react';
 import { Coffee, Minus, Plus, RotateCcw, Search, ShoppingCart, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
 import { api, fmtPrice, fmtPriceKcal, type MenuItem, type Order, type Store } from '../lib/api';
 import { computeFrequent } from '../lib/personalize';
+import { cartTotals } from '../lib/cart';
 import { BaristaChat } from '../components/BaristaChat';
 import { MenuImage } from '../components/MenuImage';
 import { groupByItemKey, defaultSku, type ProductGroup } from '../lib/menu-group';
@@ -14,6 +15,8 @@ interface CartLine {
   unit_price: number;
   currency: string;
   quantity: number;
+  /** per-unit calories; 0 = no nutrition data (kcal display hidden) */
+  kcal: number;
 }
 
 const STORE_KEY = 'daiwt-coffee-store';
@@ -143,6 +146,7 @@ export function OrderPage() {
           item_name: item.item_name,
           size: item.size,
           unit_price: Number(item.price),
+          kcal: item.calories_kcal ?? 0,
           currency: item.currency,
           quantity: 1,
         },
@@ -207,7 +211,7 @@ export function OrderPage() {
     );
   };
 
-  const total = useMemo(() => cart.reduce((s, l) => s + l.unit_price * l.quantity, 0), [cart]);
+  const { total, totalKcal } = useMemo(() => cartTotals(cart), [cart]);
   const currency = cart[0]?.currency ?? store?.currency ?? 'JPY';
 
   const placeOrder = async () => {
@@ -414,7 +418,10 @@ export function OrderPage() {
                   <div key={l.sku} className="flex items-center gap-2 text-sm">
                     <div className="flex-1">
                       <div>{l.item_name}{l.size !== 'N/A' ? ` (${l.size})` : ''}</div>
-                      <div className="text-xs text-muted-foreground">{fmtPrice(l.unit_price, l.currency)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {fmtPrice(l.unit_price, l.currency)}
+                        {l.kcal > 0 && ` / ${l.kcal * l.quantity}kcal`}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => bump(l.sku, -1)}>
@@ -429,7 +436,10 @@ export function OrderPage() {
                 ))}
                 <div className="border-t pt-2 flex justify-between font-semibold">
                   <span>合計</span>
-                  <span>{fmtPrice(total, currency)}</span>
+                  <span>
+                    {fmtPrice(total, currency)}
+                    {totalKcal > 0 && <span className="text-sm font-normal text-muted-foreground"> / {totalKcal}kcal</span>}
+                  </span>
                 </div>
                 <Input
                   placeholder="お名前(呼び出し用)"
