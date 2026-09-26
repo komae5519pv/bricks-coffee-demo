@@ -98,6 +98,25 @@ const allergyText = await page.evaluate(() => {
 });
 const allergyOk = /代替乳|オーツミルク|豆乳|アーモンドミルク/.test(allergyText);
 console.log('Q4 allergy mention:', allergyOk);
+
+// Q5 (regression: multi-round search must not leak exploration into cards):
+// fresh thread, seasonal question — cards must be EXACTLY the products the
+// final answer recommends, deduplicated, max 6.
+await page.getByRole('button', { name: '新しい会話' }).click();
+await page.waitForTimeout(500);
+await ask('秋にぴったりのドリンクは?おすすめを教えて');
+const q5 = await page.evaluate(() => {
+  const cards = [...document.querySelectorAll('[data-chat-product-card]')];
+  const names = cards.map((c) => c.querySelector('.font-medium')?.childNodes[0]?.textContent?.trim() ?? '');
+  const text = [...document.querySelectorAll('.bg-muted.mr-12')].map((b) => b.innerText).join('\n');
+  const notMentioned = names.filter((n) => n && !text.includes(n));
+  const seen = new Set();
+  const dupes = names.filter((n) => (seen.has(n) ? true : (seen.add(n), false)));
+  return { cards: cards.length, names, notMentioned, dupes, text: text.slice(0, 300) };
+});
+console.log('Q5 autumn cards:', JSON.stringify({ cards: q5.cards, names: q5.names, notMentioned: q5.notMentioned, dupes: q5.dupes }));
+console.log('Q5 answer excerpt:', q5.text.replace(/\n/g, ' | ').slice(0, 200));
+await page.screenshot({ path: OUT.replace('.png', '-autumn.png') });
 await page.screenshot({ path: OUT });
 console.log('screenshot:', OUT);
 console.log('console errors:', consoleErrors.length ? consoleErrors : 'none');
@@ -114,6 +133,10 @@ if (setCard === 0) failures.push('no recommend_set card rendered');
 if (setCard > 0 && (!setText.includes('合計') || !/kcal/.test(setText))) failures.push('set card missing total price or kcal');
 if (cartCount < 2) failures.push(`set add-all did not add items to cart (cartCount=${cartCount})`);
 if (!allergyOk) failures.push('milk allergy answer did not mention alternative milk');
+if (q5.cards === 0) failures.push('autumn recommendation produced no product cards');
+if (q5.cards > 6) failures.push(`too many product cards (${q5.cards} > 6)`);
+if (q5.notMentioned.length > 0) failures.push(`cards for products the answer does not recommend: ${q5.notMentioned.join(',')}`);
+if (q5.dupes.length > 0) failures.push(`duplicate product cards: ${q5.dupes.join(',')}`);
 if (failures.length) {
   console.error('VERIFICATION FAILED:', failures.join(' / '));
   process.exit(1);

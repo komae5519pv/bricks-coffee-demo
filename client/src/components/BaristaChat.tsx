@@ -13,6 +13,7 @@ import {
 import { Check, History, MessageCircle, Plus, ShieldQuestion, Trash2, X } from 'lucide-react';
 import { api, fmtPrice, fmtPriceKcal, type ChatThreadSummary, type MenuItem } from '../lib/api';
 import { defaultSku, groupByItemKey, type ProductGroup } from '../lib/menu-group';
+import { reconcileRecommendations, MAX_RECOMMENDATION_CARDS } from '../lib/recommend';
 import { useStoreId } from '../lib/current-store';
 import { useCart } from '../lib/cart-store';
 import { MenuImage } from './MenuImage';
@@ -33,8 +34,15 @@ interface PendingApproval {
   args: string;
 }
 
-/** Tools whose JSON result should render as product cards. */
-const PRODUCT_TOOLS = new Set(['search_menu', 'get_item_details', 'get_my_frequent_items']);
+/** Tool whose JSON result renders as product cards IMMEDIATELY (a single
+ * curated ranking — no multi-round union problem). */
+const PRODUCT_TOOLS = new Set(['get_my_frequent_items']);
+
+/** Search tools fire multiple times per turn (explore -> narrow). Their
+ * results are buffered and reconciled with the final answer text instead of
+ * rendering every round — otherwise intermediate exploration leaks into the
+ * cards (the bug this fixes). */
+const BUFFERED_PRODUCT_TOOLS = new Set(['search_menu', 'get_item_details']);
 
 /** MenuItem plus optional personalization metadata from agent tools. */
 type CardItem = MenuItem & { order_count?: number; quantity?: number };
@@ -158,12 +166,16 @@ function useSeedableAgentChat({
   const abortRef = useRef<AbortController | null>(null);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
+  // Final accumulated text of the in-flight answer, readable after send()
+  // resolves (state would be a stale closure at the call site).
+  const textRef = useRef('');
 
   const send = async (message: string, threadOverride?: string | null) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setContent('');
+    textRef.current = '';
     setError(null);
     setIsStreaming(true);
     const threadId = threadOverride !== undefined ? threadOverride : threadIdRef.current;
@@ -199,6 +211,7 @@ function useSeedableAgentChat({
               if (typeof tid === 'string') threadIdRef.current = tid;
             } else if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') {
               acc += ev.delta;
+              textRef.current = acc;
               setContent(acc);
             }
           } catch {
@@ -229,7 +242,9 @@ function useSeedableAgentChat({
 
   const currentThreadId = () => threadIdRef.current;
 
-  return { content, isStreaming, error, send, reset, setThreadId, currentThreadId };
+  const currentText = () => textRef.current;
+
+  return { content, isStreaming, error, send, reset, setThreadId, currentThreadId, currentText };
 }
 
 /**
@@ -251,6 +266,11 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const storeRef = useRef(storeId);
   const toolNameByCallId = useRef(new Map<string, string>());
+  // Per-turn product-card state: search results buffered while the model
+  // explores, and whether an explicit show_recommendations call already
+  // produced the final cards.
+  const pendingProductsRef = useRef<MenuItem[]>([]);
+  const explicitCardsRef = useRef(false);
 
   useEffect(() => {
     storeRef.current = storeId;
@@ -285,6 +305,35 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
           // not a set payload — the text answer still shows
         }
       }
+      // Explicit final picks: the model's show_recommendations call renders
+      // cards right away (SKU-exact), and suppresses the fallback reconcile.
+      if (toolName === 'show_recommendations' && event.item.output) {
+        try {
+          const parsed = JSON.parse(event.item.output) as { type?: string; items?: MenuItem[] };
+          if (parsed?.type === 'recommend_items' && Array.isArray(parsed.items)) {
+            const valid = parsed.items.filter((r) => r && typeof r.sku === 'string');
+            const groups = groupByItemKey(valid).slice(0, MAX_RECOMMENDATION_CARDS);
+            if (groups.length > 0) {
+              explicitCardsRef.current = true;
+              setMessages((prev) => [
+                ...prev,
+                { id: `p-${Date.now()}-${Math.random()}`, role: 'tool-products', content: '', groups },
+              ]);
+            }
+          }
+        } catch {
+          // not the expected payload — no cards from this output
+        }
+      }
+      if (toolName && BUFFERED_PRODUCT_TOOLS.has(toolName) && event.item.output) {
+        try {
+          const rows = JSON.parse(event.item.output) as MenuItem | MenuItem[];
+          const items = Array.isArray(rows) ? rows : [rows];
+          pendingProductsRef.current.push(...items.filter((r) => r && typeof r.sku === 'string'));
+        } catch {
+          // not JSON — nothing to buffer
+        }
+      }
       if (toolName && PRODUCT_TOOLS.has(toolName) && event.item.output) {
         try {
           const rows = JSON.parse(event.item.output) as MenuItem | MenuItem[];
@@ -297,7 +346,7 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
                 id: `p-${Date.now()}-${Math.random()}`,
                 role: 'tool-products',
                 content: '',
-                groups: groupByItemKey(valid),
+                groups: groupByItemKey(valid).slice(0, MAX_RECOMMENDATION_CARDS),
               },
             ]);
           }
@@ -316,7 +365,7 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
     }
   };
 
-  const { content, isStreaming, error, send, reset, setThreadId, currentThreadId } = useSeedableAgentChat({
+  const { content, isStreaming, error, send, reset, setThreadId, currentThreadId, currentText } = useSeedableAgentChat({
     agent: 'barista',
     onEvent: handleEvent,
   });
@@ -394,6 +443,8 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
     const message = input.trim();
     if (!message || isStreaming) return;
     setInput('');
+    pendingProductsRef.current = [];
+    explicitCardsRef.current = false;
     const storeHint = storeRef.current ? `(現在選択中の店舗: ${storeRef.current}) ` : '';
     const assistantId = `a-${Date.now()}`;
     setMessages((prev) => [
@@ -403,6 +454,18 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
     ]);
     setPendingAssistantId(assistantId);
     await send(`${storeHint}${message}`);
+    // Fallback: the model didn't pick final cards explicitly — render only
+    // the search results the answer's text actually recommends (exact
+    // official-name match, deduped, capped).
+    if (!explicitCardsRef.current && pendingProductsRef.current.length > 0) {
+      const groups = groupByItemKey(reconcileRecommendations(pendingProductsRef.current, currentText())).slice(
+        0,
+        MAX_RECOMMENDATION_CARDS,
+      );
+      if (groups.length > 0) {
+        setMessages((prev) => [...prev, { id: `p-${Date.now()}-rc`, role: 'tool-products', content: '', groups }]);
+      }
+    }
     setPendingAssistantId(null);
     setActiveThreadId(currentThreadId());
     void refreshThreads();

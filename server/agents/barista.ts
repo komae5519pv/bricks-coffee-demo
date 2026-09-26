@@ -13,7 +13,7 @@
 import { createAgent, tool, type ToolkitEntry, type ToolkitOptions } from '@databricks/appkit/beta';
 import { z } from 'zod';
 import type { DbLike } from '../lib/menu';
-import { searchMenu, getActiveItem } from '../lib/menu';
+import { searchMenu, getActiveItem, getItemsBySkus } from '../lib/menu';
 import type { EmbeddingsInvoker } from '../lib/embed';
 
 interface StoreRow {
@@ -46,6 +46,12 @@ const INSTRUCTIONS = `
 - 店舗が分からない場合は get_stores で店舗一覧を確認し、ユーザーに店舗を尋ねること。以降のツール呼び出しには必ず store_id を使うこと。
 - 価格はすべて円(¥)で表示すること(例: 「¥720」)。全店舗・全商品が円建て。
 - 商品の味や説明を聞かれたら get_item_details を使うこと。
+
+## 商品カードの表示(重要)
+- おすすめ・提案の回答では、search_menu 等で候補を調べた後、文章で実際に推す商品だけを show_recommendations にSKUで渡すこと(最大6件)。
+- 文章で推薦していない商品を show_recommendations に含めてはいけない。探索途中の候補はユーザーに見せない。
+- 価格・成分など事実だけの質問(例:「カロリーは?」)ではカードは不要。show_recommendations はおすすめの文脈でのみ使うこと。
+- recommend_set / get_my_frequent_items / reorder_last は専用のカードが出るため、それらの結果を show_recommendations で再表示しないこと。
 
 ## 栄養・健康の質問(カロリー・タンパク質・脂質)
 - 「カロリー控えめ」「高タンパク」「低脂質」などの質問には、知識で答えず必ず search_menu の構造化フィルタ(max_calories / min_protein / max_fat)で正確に絞ること。
@@ -183,6 +189,24 @@ export const barista = createAgent({
             alt_milk: args.alt_milk,
           });
           return result.rows;
+        },
+      }),
+
+      show_recommendations: tool({
+        description:
+          '最終的におすすめする商品をチャットにカード表示します(最大6件)。おすすめ・提案の回答では、search_menu 等で候補を調べた後、文章で実際に推す商品のSKUだけをこのツールに渡してください。文章で推薦しない商品は絶対に含めないでください。',
+        schema: z.object({
+          store_id: z.string(),
+          skus: z
+            .array(z.string())
+            .min(1)
+            .max(6)
+            .describe('最終的に推薦する商品のSKU(最大6件。search_menu の結果から正確に転記。サイズ違いは代表1件でよい)'),
+        }),
+        annotations: { effect: 'read' },
+        execute: async ({ store_id, skus }) => {
+          const items = await getItemsBySkus(db, store_id, skus);
+          return { type: 'recommend_items', items };
         },
       }),
 

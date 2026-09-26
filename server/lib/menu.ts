@@ -155,6 +155,26 @@ export async function searchMenu(
   return { rows, mode: 'fallback' };
 }
 
+/**
+ * Fetch menu rows by SKU for one store, in the REQUESTED order with
+ * duplicate SKUs removed (first occurrence wins) and unknown/inactive SKUs
+ * dropped. Backs the agent's show_recommendations tool: the model passes
+ * only its final picks by SKU and the chat renders exactly those.
+ */
+export async function getItemsBySkus(db: DbLike, storeId: string, skus: string[]): Promise<MenuRow[]> {
+  const unique = [...new Set(skus)];
+  if (unique.length === 0) return [];
+  const { rows } = await db.query<MenuRow>(
+    `SELECT sku, store_id, item_key, item_name, category, size, price::text,
+            currency, description${IMAGE_COLS}${NUTRITION_COLS}
+     FROM cofee_shop.menu_items
+     WHERE store_id = $1 AND sku = ANY($2) AND active`,
+    [storeId, unique],
+  );
+  const bySku = new Map(rows.map((r) => [r.sku, r]));
+  return unique.map((sku) => bySku.get(sku)).filter((r): r is MenuRow => r != null);
+}
+
 /** Look up a single SKU (must exist, belong to the store, and be active). */
 export async function getActiveItem(db: DbLike, storeId: string, sku: string): Promise<MenuRow | null> {
   const { rows } = await db.query<MenuRow>(

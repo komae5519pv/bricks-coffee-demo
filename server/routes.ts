@@ -439,7 +439,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
             embedding_endpoint: process.env.EMBEDDING_ENDPOINT_NAME ?? null,
             tracing: 'OpenTelemetry spans (AppKit execution pipeline, automatic)',
             tools: [
-              'get_stores', 'search_menu', 'get_item_details', 'place_order',
+              'get_stores', 'search_menu', 'show_recommendations', 'get_item_details', 'place_order',
               'get_my_orders', 'get_order_board', 'update_order_status',
               'get_my_preferences', 'save_preference',
             ],

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { insertOrder, priceCart, searchMenu, type DbLike, type MenuRow } from './menu';
+import { insertOrder, priceCart, searchMenu, getItemsBySkus, type DbLike, type MenuRow } from './menu';
 
 const LATTE: MenuRow = {
   sku: 'TYO001-LATTE-M',
@@ -70,5 +70,30 @@ describe('searchMenu', () => {
     const result = await searchMenu(dbWith([LATTE]), null, { store_id: 'TYO001', query: 'ラテ' });
     expect(result.mode).toBe('fallback');
     expect(result.rows[0]?.sku).toBe('TYO001-LATTE-M');
+  });
+});
+
+describe('getItemsBySkus', () => {
+  it('returns rows in the REQUESTED order with duplicates removed and unknown SKUs dropped', async () => {
+    const other: MenuRow = { ...LATTE, sku: 'TYO001-ESP-M', item_key: 'ESP', item_name: 'エスプレッソ' };
+    const rows = await getItemsBySkus(dbWith([LATTE, other]), 'TYO001', [
+      'TYO001-ESP-M',
+      'TYO001-NOPE-M',
+      'TYO001-LATTE-M',
+      'TYO001-ESP-M',
+    ]);
+    expect(rows.map((r) => r.sku)).toEqual(['TYO001-ESP-M', 'TYO001-LATTE-M']);
+  });
+
+  it('returns [] for an empty request without querying', async () => {
+    let queried = false;
+    const db: DbLike = {
+      query: <T,>() => {
+        queried = true;
+        return Promise.resolve({ rows: [] as T[] });
+      },
+    };
+    expect(await getItemsBySkus(db, 'TYO001', [])).toEqual([]);
+    expect(queried).toBe(false);
   });
 });
