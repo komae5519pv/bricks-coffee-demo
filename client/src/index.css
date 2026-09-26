@@ -80,3 +80,21 @@
     --sidebar-ring: oklch(0.552 0.016 285.938); */
   }
 }
+
+/* New-order pulse on the kitchen board: the arriving card glows twice,
+   then settles back to the plain card look (one-shot, no persistent UI). */
+@keyframes order-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(59 130 246 / 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgb(59 130 246 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(59 130 246 / 0);
+  }
+}
+
+.animate-order-pulse {
+  animation: order-pulse 1.2s ease-out 2;
+}

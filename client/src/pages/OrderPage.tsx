@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { Button, Card, CardContent, Input } from '@databricks/appkit-ui/react';
-import { Coffee, MessageCircle, Minus, Plus, RotateCcw, Search, ShoppingCart, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
+import { CheckCircle2, Coffee, MessageCircle, Minus, Plus, RotateCcw, Search, ShoppingCart, SlidersHorizontal, Sparkles, Trash2, X } from 'lucide-react';
 import { api, fmtPrice, fmtPriceKcal, type MenuItem, type Order, type Store } from '../lib/api';
 import { computeFrequent } from '../lib/personalize';
 import { cartTotals } from '../lib/cart';
@@ -174,6 +175,15 @@ export function OrderPage() {
   const cartCount = useMemo(() => cart.reduce((s, l) => s + l.quantity, 0), [cart]);
   const currency = cart[0]?.currency ?? store?.currency ?? 'JPY';
 
+  // Order-success toast: measured Lakebase commit latency + a link into the
+  // status page's event log. Transient by design — no persistent UI added.
+  const [toast, setToast] = useState<{ id: string; seconds: string } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 8000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const placeOrder = async () => {
     if (!customerName.trim() || cart.length === 0) return;
     try {
@@ -183,7 +193,10 @@ export function OrderPage() {
         cart.map((l) => ({ sku: l.sku, quantity: l.quantity })),
       );
       clear();
-      setNotice(`注文 #${order.id.slice(0, 8)} を受け付けました(合計 ${fmtPrice(order.total_price, order.currency)})。キッチンが調理を始めます。`);
+      setToast({
+        id: order.id,
+        seconds: (order.commit_ms / 1000).toFixed(order.commit_ms < 100 ? 2 : 1),
+      });
     } catch (e) {
       setNotice(e instanceof Error ? e.message : String(e));
     }
@@ -425,6 +438,32 @@ export function OrderPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Order-commit toast: shows the MEASURED Lakebase commit latency and
+          links into the status page's event log for this order. Auto-dismiss. */}
+      {toast && (
+        <div data-order-toast className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 lg:left-6 lg:translate-x-0">
+          <div className="flex items-start gap-2 rounded-md border bg-background p-3 text-sm shadow-lg">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+            <div className="min-w-0 flex-1">
+              注文 #{toast.id.slice(0, 8)} を Lakebase にコミットしました ({toast.seconds}秒)
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                <Link to={`/status?order=${toast.id}`} className="text-primary underline">
+                  このレコードを見る
+                </Link>
+                — 書込み → コミット → Delta 反映をステータスページで追跡できます
+              </div>
+            </div>
+            <button
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              title="閉じる"
+              onClick={() => setToast(null)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mobile-only floating cart bar: the right column (cart) stacks far
           below the menu grid on phones, so the bar keeps it reachable.

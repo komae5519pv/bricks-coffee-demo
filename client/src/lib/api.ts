@@ -95,6 +95,20 @@ export interface Order {
   items: OrderItem[];
 }
 
+/** One row of the live order event log on the status page. */
+export interface OrderEvent {
+  id: string;
+  customer_name: string;
+  channel: string;
+  status: string;
+  total_price: string;
+  currency: string;
+  lakebase_committed_at: string;
+  commit_ms: number | null;
+  delta_synced_at: string | null;
+  lag_seconds: number | null;
+}
+
 export interface HistorySummary {
   popular: { item_name: string; qty: string; orders: string }[];
   monthly: { month: string; orders: string; qty: string }[];
@@ -199,10 +213,11 @@ export const api = {
     req<string[]>(`/api/menu/categories?store_id=${encodeURIComponent(storeId)}`),
   myOrders: () => req<Order[]>('/api/orders'),
   placeOrder: (storeId: string, customerName: string, items: { sku: string; quantity: number }[]) =>
-    req<Order>('/api/orders', {
+    req<Order & { commit_ms: number }>('/api/orders', {
       method: 'POST',
       body: JSON.stringify({ store_id: storeId, customer_name: customerName, items }),
     }),
+  orderEvents: () => req<{ events: OrderEvent[] }>('/api/order-events'),
   board: (storeId: string) => req<Order[]>(`/api/board?store_id=${encodeURIComponent(storeId)}`),
   setStatus: (orderId: string, status: Order['status']) =>
     req<{ id: string; status: string }>(`/api/orders/${orderId}/status`, {

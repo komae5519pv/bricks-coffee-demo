@@ -11,7 +11,7 @@ import { z } from 'zod';
 import type { AppHandle } from './server';
 import type { EmbeddingsInvoker } from './lib/embed';
 import { searchMenu, priceCart, insertOrder, reembedItems, type DbLike } from './lib/menu';
-import { getDeltaSyncStatus, getLakebaseStatus } from './lib/status';
+import { getDeltaSyncStatus, getLakebaseStatus, getOrderEvents, recordCommit } from './lib/status';
 import { pickImage } from './lib/images';
 
 export interface OrderRow {
@@ -199,7 +199,9 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           parsed.data.items,
         );
         const db = userDb(req);
-        // Atomic: header + items go in as ONE statement (see insertOrder).
+        // Atomic: header + items go in as ONE statement (see insertOrder) —
+        // its wall time IS the implicit transaction's commit latency.
+        const t0 = performance.now();
         const orderId = await insertOrder(db, {
           store_id: parsed.data.store_id,
           customer_name: parsed.data.customer_name,
@@ -208,11 +210,13 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           currency,
           items: priced,
         });
+        const commitMs = Math.round(performance.now() - t0);
+        recordCommit(orderId, commitMs);
         const { rows } = await db.query<OrderRow>(
           `${ORDERS_WITH_ITEMS} WHERE o.id = $1 GROUP BY o.id`,
           [orderId],
         );
-        res.status(201).json(rows[0]);
+        res.status(201).json({ ...rows[0], commit_ms: commitMs });
       } catch (e) {
         res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
       }
@@ -458,6 +462,16 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           lakebase,
           delta_sync: delta,
         });
+      } catch (e) {
+        res.status(500).json({ error: String(e) });
+      }
+    });
+
+    /** Live order event log: app write -> Lakebase commit -> Delta reflect. */
+    app.get('/api/order-events', async (_req: Request, res: Response) => {
+      try {
+        const events = await getOrderEvents(spDb);
+        res.json({ events });
       } catch (e) {
         res.status(500).json({ error: String(e) });
       }

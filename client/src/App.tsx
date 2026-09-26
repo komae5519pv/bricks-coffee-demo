@@ -88,8 +88,45 @@ function Layout() {
   );
 }
 
+/** lg (1024px) and up: the chat panel is a floating window (below that it
+ * is a near-fullscreen sheet and resize handles stay hidden). */
+function useIsDesktop() {
+  const [desktop, setDesktop] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setDesktop(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return desktop;
+}
+
+const PANEL_SIZE_KEY = 'daiwt-chat-panel-size';
+const PANEL_MIN_W = 320;
+const PANEL_MIN_H = 420;
+
+function clamp(v: number, min: number, max: number) {
+  return Math.min(Math.max(v, min), max);
+}
+
+function readPanelSize(): { w: number; h: number } | null {
+  try {
+    const raw = localStorage.getItem(PANEL_SIZE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as { w?: unknown; h?: unknown };
+    if (typeof p.w !== 'number' || typeof p.h !== 'number') return null;
+    return {
+      w: clamp(p.w, PANEL_MIN_W, window.innerWidth - 48),
+      h: clamp(p.h, PANEL_MIN_H, window.innerHeight - 48),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function LayoutShell() {
   const isMobile = useIsMobile();
+  const isDesktop = useIsDesktop();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   // デモ用表示切替: スタッフが「お客さん表示」をプレビューできる(表示だけ。
@@ -100,6 +137,41 @@ function LayoutShell() {
   const cartCount = cart.reduce((s, l) => s + l.quantity, 0);
   const { pathname } = useLocation();
   const isOrderPage = pathname === '/';
+
+  // Chat panel size: drag-resizable from the left/top edges on desktop
+  // (the panel is anchored bottom-right, so those edges grow it). The size
+  // persists in localStorage; below lg the sheet layout ignores it.
+  const [panelSize, setPanelSize] = useState<{ w: number; h: number } | null>(readPanelSize);
+  useEffect(() => {
+    if (!panelSize) return;
+    try {
+      localStorage.setItem(PANEL_SIZE_KEY, JSON.stringify(panelSize));
+    } catch {
+      // private mode etc. — resizing still works, it just doesn't persist
+    }
+  }, [panelSize]);
+
+  const startResize = (e: React.PointerEvent<HTMLDivElement>, dir: 'left' | 'top' | 'corner') => {
+    e.preventDefault();
+    const panel = e.currentTarget.closest('[data-chat-panel]');
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = rect.width;
+    const startH = rect.height;
+    const onMove = (ev: PointerEvent) => {
+      const w = clamp(startW + (dir === 'top' ? 0 : startX - ev.clientX), PANEL_MIN_W, window.innerWidth - 48);
+      const h = clamp(startH + (dir === 'left' ? 0 : startY - ev.clientY), PANEL_MIN_H, window.innerHeight - 48);
+      setPanelSize({ w, h });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
 
   useEffect(() => {
     api.me().then(setMe).catch(() => setMe(null));
@@ -203,14 +275,33 @@ function LayoutShell() {
           cart; only the header's close button dismisses it. Kept mounted
           (hidden) when closed so messages and any in-flight stream survive.
           Below lg it's a near-fullscreen sheet; on desktop it's a floating
-          panel docked LEFT of the cart column on the order page so the cart
-          stays visible and operable. */}
+          panel at the right edge, drag-resizable from the left/top edges
+          (size persists in localStorage). */}
       <div
         data-chat-panel
-        className={`fixed inset-2 z-40 flex-col overflow-hidden rounded-lg border bg-background shadow-xl lg:inset-auto lg:bottom-6 lg:h-[75vh] lg:max-h-[calc(100vh-3rem)] lg:w-96 xl:w-[420px] ${
-          isOrderPage ? 'lg:right-[404px]' : 'lg:right-6'
-        } ${chatOpen ? 'flex' : 'hidden'}`}
+        style={isDesktop && panelSize ? { width: panelSize.w, height: panelSize.h } : undefined}
+        className={`fixed inset-2 z-40 flex-col overflow-hidden rounded-lg border bg-background shadow-xl lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[75vh] lg:max-h-[calc(100vh-3rem)] lg:w-96 xl:w-[420px] ${
+          chatOpen ? 'flex' : 'hidden'
+        }`}
       >
+        <div
+          data-resize-handle="left"
+          className="absolute left-0 top-0 bottom-0 hidden w-1.5 cursor-ew-resize lg:block"
+          style={{ touchAction: 'none' }}
+          onPointerDown={(e) => startResize(e, 'left')}
+        />
+        <div
+          data-resize-handle="top"
+          className="absolute left-0 right-0 top-0 hidden h-1.5 cursor-ns-resize lg:block"
+          style={{ touchAction: 'none' }}
+          onPointerDown={(e) => startResize(e, 'top')}
+        />
+        <div
+          data-resize-handle="corner"
+          className="absolute left-0 top-0 hidden h-4 w-4 cursor-nwse-resize lg:block"
+          style={{ touchAction: 'none' }}
+          onPointerDown={(e) => startResize(e, 'corner')}
+        />
         <BaristaChat panelOpen={chatOpen} onClose={() => setChatOpen(false)} />
       </div>
     </div>

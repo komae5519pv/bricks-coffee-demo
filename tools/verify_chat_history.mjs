@@ -88,9 +88,45 @@ console.log(
 );
 if (!panelBox || panelBox.width < 380) failures.push(`panel too narrow (${panelBox?.width})`);
 if (!panelBox || panelBox.height < 500) failures.push(`panel too short (${panelBox?.height})`);
-if (panelBox && (panelBox.x < 0 || panelBox.x + panelBox.width > 1441)) failures.push('panel overflows the viewport');
-if (panelBox && cartBox && panelBox.x + panelBox.width > cartBox.x + 1) failures.push('panel overlaps the cart column');
+// right-edge floating placement (right-6 = 24px gutter); overlapping the
+// cart column is allowed by design — the user resizes to avoid it
+if (panelBox && Math.abs(panelBox.x + panelBox.width - 1416) > 2) {
+  failures.push(`panel not docked at the right edge (right=${Math.round(panelBox.x + panelBox.width)}, want 1416)`);
+}
 await page.screenshot({ path: '/tmp/chat-overlay-cart6-panel.png' });
+
+// ---------- resize: drag the LEFT edge wider; right edge stays anchored ----------
+let resizedWidth = 0;
+{
+  const handle = page.locator('[data-resize-handle="left"]');
+  const hb = await handle.boundingBox();
+  if (!hb || !panelBox) {
+    failures.push('resize handle (left) not found');
+  } else {
+    const cy = hb.y + hb.height / 2;
+    await page.mouse.move(hb.x + hb.width / 2, cy);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width / 2 - 120, cy, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const grown = await panel.boundingBox();
+    resizedWidth = grown?.width ?? 0;
+    console.log('panel after left-drag resize:', grown && `${Math.round(grown.width)}x${Math.round(grown.height)}`);
+    if (!grown || grown.width < panelBox.width + 100) {
+      failures.push(`resize did not widen the panel (${Math.round(panelBox.width)} -> ${Math.round(grown?.width ?? 0)})`);
+    }
+    if (grown && Math.abs(grown.x + grown.width - 1416) > 2) failures.push('resize moved the right edge');
+    const saved = await page.evaluate(() => {
+      const raw = localStorage.getItem('daiwt-chat-panel-size');
+      return raw ? JSON.parse(raw) : null;
+    });
+    console.log('localStorage panel size:', JSON.stringify(saved));
+    if (!saved || typeof saved.w !== 'number' || saved.w < panelBox.width + 100) {
+      failures.push('resized size not saved to localStorage');
+    }
+    await page.screenshot({ path: '/tmp/chat-overlay-resized.png' });
+  }
+}
 
 // ---------- 2. first question -> barista answers (LLM-payload regression) ----------
 await ask(FIRST_Q);
@@ -126,6 +162,14 @@ await page.screenshot({ path: '/tmp/chat-overlay-nonmodal-cart.png' });
 await page.reload({ waitUntil: 'networkidle' });
 await fab.click();
 await page.getByPlaceholder('バリスタにメッセージ…').waitFor({ timeout: 30000 });
+// resized width persists across reload (localStorage)
+if (resizedWidth) {
+  const after = await panel.boundingBox();
+  console.log('panel size after reload:', after && `${Math.round(after.width)}x${Math.round(after.height)}`);
+  if (!after || Math.abs(after.width - resizedWidth) > 2) {
+    failures.push(`resized width not persisted (want ${Math.round(resizedWidth)}, got ${Math.round(after?.width ?? 0)})`);
+  }
+}
 await page.getByRole('button', { name: '履歴' }).click();
 await page.waitForTimeout(1500);
 const sheetHasT1 = t1 ? await page.getByText(t1.title, { exact: false }).count() : 0;

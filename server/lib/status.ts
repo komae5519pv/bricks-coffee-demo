@@ -48,6 +48,44 @@ interface DbLike {
 
 const STATEMENT_TIMEOUT_MS = 55_000;
 
+/**
+ * Measured commit latency of orders placed through this app process
+ * (order id -> ms of the atomic INSERT statement, which IS the implicit
+ * transaction). In-memory only: restart loses the number, but the event
+ * log's commit/reflect timestamps always rehydrate from Lakebase + Delta.
+ */
+const commitMsByOrder = new Map<string, number>();
+const COMMIT_CACHE_MAX = 200;
+
+export function recordCommit(orderId: string, ms: number): void {
+  commitMsByOrder.set(orderId, ms);
+  if (commitMsByOrder.size > COMMIT_CACHE_MAX) {
+    const oldest = commitMsByOrder.keys().next().value;
+    if (oldest) commitMsByOrder.delete(oldest);
+  }
+}
+
+export interface OrderEvent {
+  id: string;
+  customer_name: string;
+  channel: string;
+  status: string;
+  total_price: string;
+  currency: string;
+  /** Lakebase commit time (orders.created_at, UTC text). */
+  lakebase_committed_at: string;
+  /** Measured commit latency in ms (only for orders placed via this app process). */
+  commit_ms: number | null;
+  /** First materialization in the CDC history table (_timestamp), null until reflected. */
+  delta_synced_at: string | null;
+  /** delta_synced_at - lakebase_committed_at in seconds, null until reflected. */
+  lag_seconds: number | null;
+}
+
+/** Delta-side sync map cache: re-query the warehouse only when something is
+ * unsynced or a new order id showed up — quiet polling stays Lakebase-only. */
+let deltaCache: { key: string; synced: Map<string, string> } | null = null;
+
 /** Run one SQL statement on the configured warehouse; returns rows as string arrays. */
 async function runStatement(statement: string): Promise<(string | null)[][]> {
   const warehouseId = process.env.DATABRICKS_WAREHOUSE_ID;
@@ -91,7 +129,9 @@ export async function getDeltaSyncStatus(): Promise<DeltaSyncStatus> {
               CAST(max_by(_timestamp, _pg_lsn) AS STRING)
        FROM ${catalog}.${schema}.lb_orders_history`,
     );
-    const [count, lastCreated, lastSynced] = rows[0] ?? ['0', null, null];
+    const [count, lastCreatedRaw, lastSyncedRaw] = rows[0] ?? ['0', null, null];
+    const lastCreated = lastCreatedRaw ? asUtcIso(lastCreatedRaw) : null;
+    const lastSynced = lastSyncedRaw ? asUtcIso(lastSyncedRaw) : null;
     let lag: number | null = null;
     if (lastCreated && lastSynced) {
       lag = Math.round(((new Date(lastSynced).getTime() - new Date(lastCreated).getTime()) / 1000) * 1000) / 1000;
@@ -144,4 +184,83 @@ export async function getLakebaseStatus(spDb: DbLike): Promise<LakebaseStatus> {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Spark's CAST(ts AS STRING) yields '2026-09-26 07:21:55.123' with no zone
+ * marker (warehouse session TZ is UTC — the same assumption the existing
+ * server-side lag math already relies on). Browsers would read that as
+ * LOCAL time, so normalize to an explicit UTC ISO string before handing
+ * timestamps to the client.
+ */
+function asUtcIso(s: string): string {
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return s;
+  return `${s.replace(' ', 'T')}Z`;
+}
+
+/**
+ * Recent order events for the status page's live log: each order's
+ * Lakebase commit time, its measured app-side commit latency (when placed
+ * through this process), and when the CDC pipeline first materialized it
+ * in the Delta history table (null while still in flight).
+ *
+ * Cost shape: the Lakebase query runs every poll (milliseconds); the
+ * warehouse statement runs only while the newest ids are unsynced.
+ */
+export async function getOrderEvents(spDb: DbLike, limit = 8): Promise<OrderEvent[]> {
+  const { rows: orders } = await spDb.query<{
+    id: string;
+    customer_name: string;
+    channel: string;
+    status: string;
+    total_price: string;
+    currency: string;
+    created_at: string;
+  }>(
+    `SELECT id, customer_name, channel, status, total_price::text, currency, created_at::text
+     FROM cofee_shop.orders ORDER BY created_at DESC LIMIT ${Math.min(Math.max(limit, 1), 50)}`,
+  );
+  if (orders.length === 0) return [];
+
+  const ids = orders.map((o) => o.id).filter((id) => UUID_RE.test(id));
+  const cacheKey = ids.join(',');
+  const cached = deltaCache?.key === cacheKey ? deltaCache.synced : null;
+  const missing = cached ? ids.filter((id) => !cached.has(id)) : ids;
+  let synced = cached;
+  if (!cached || missing.length > 0) {
+    const rows = await runStatement(
+      `SELECT id, CAST(MIN(_timestamp) AS STRING)
+       FROM ${process.env.COFFEE_CATALOG}.${process.env.COFFEE_SCHEMA}.lb_orders_history
+       WHERE id IN (${ids.map((id) => `'${id}'`).join(',')})
+       GROUP BY id`,
+    );
+    const fresh = new Map<string, string>();
+    for (const [id, ts] of rows) if (id && ts) fresh.set(id, asUtcIso(ts));
+    // Keep previously-known sync times for ids the warehouse didn't return
+    // yet (still in flight) — they stay null until reflected.
+    synced = new Map([...(cached ?? []), ...fresh]);
+    deltaCache = { key: cacheKey, synced };
+  }
+
+  return orders.map((o) => {
+    const deltaSyncedAt = synced?.get(o.id) ?? null;
+    const lag =
+      deltaSyncedAt != null
+        ? Math.round(((new Date(deltaSyncedAt).getTime() - new Date(o.created_at).getTime()) / 1000) * 1000) / 1000
+        : null;
+    return {
+      id: o.id,
+      customer_name: o.customer_name,
+      channel: o.channel,
+      status: o.status,
+      total_price: o.total_price,
+      currency: o.currency,
+      lakebase_committed_at: o.created_at,
+      commit_ms: commitMsByOrder.get(o.id) ?? null,
+      delta_synced_at: deltaSyncedAt,
+      lag_seconds: lag,
+    };
+  });
 }

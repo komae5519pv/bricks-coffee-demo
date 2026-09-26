@@ -24,6 +24,7 @@ import {
 } from '@databricks/appkit/beta';
 import { z } from 'zod';
 import { insertOrder, priceCart, type DbLike, type MenuRow } from '../lib/menu';
+import { recordCommit } from '../lib/status';
 
 interface OrderRow {
   id: string;
@@ -103,6 +104,7 @@ function buildRegistry(): ToolRegistry {
       annotations: { effect: 'write' },
       execute: async ({ store_id, customer_name, items }) => {
         const { priced, total, currency } = await priceCart(requireDb(), store_id, items);
+        const t0 = performance.now();
         const orderId = await insertOrder(requireDb(), {
           store_id,
           customer_name,
@@ -111,6 +113,7 @@ function buildRegistry(): ToolRegistry {
           currency,
           items: priced,
         });
+        recordCommit(orderId, Math.round(performance.now() - t0));
         return {
           order_id: orderId,
           status: 'received',

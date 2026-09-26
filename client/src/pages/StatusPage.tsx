@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { Card, CardContent } from '@databricks/appkit-ui/react';
-import { Activity, ArrowRight, Bot, Database, KeyRound, RefreshCw, Sparkles } from 'lucide-react';
-import { api, type StatusResponse } from '../lib/api';
+import { Activity, ArrowRight, Bot, CheckCircle2, Database, KeyRound, ListOrdered, RefreshCw, Sparkles, Timer } from 'lucide-react';
+import { api, fmtPrice, type OrderEvent, type StatusResponse } from '../lib/api';
+import { fmtAgo, useNow } from '../lib/use-now';
 
 function Row({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
@@ -48,7 +50,36 @@ export function StatusPage() {
     return () => clearInterval(t);
   }, [load]);
 
+  // Live order event log: app write -> Lakebase commit -> Delta reflect.
+  // Polled faster than the rest of the page (4s); the server keeps quiet
+  // polls cheap (warehouse is re-queried only while the newest ids are
+  // unsynced).
+  const [events, setEvents] = useState<OrderEvent[] | null>(null);
+  useEffect(() => {
+    const loadEvents = () => {
+      api
+        .orderEvents()
+        .then((d) => setEvents(d.events))
+        .catch(() => undefined);
+    };
+    loadEvents();
+    const t = setInterval(loadEvents, 4000);
+    return () => clearInterval(t);
+  }, []);
+
+  const now = useNow(1000);
+  const [params] = useSearchParams();
+  const focusOrder = params.get('order');
+  const scrolledRef = useRef(false);
+  useEffect(() => {
+    if (scrolledRef.current || !focusOrder || !events?.some((e) => e.id === focusOrder)) return;
+    scrolledRef.current = true;
+    document.querySelector(`[data-order-event="${focusOrder}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [events, focusOrder]);
+
   const lag = data?.delta_sync?.lag_seconds;
+  const latest = events?.[0] ?? null;
+  const latestSyncedLag = events?.find((e) => e.lag_seconds != null)?.lag_seconds ?? null;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -209,6 +240,79 @@ export function StatusPage() {
             </div>
           )}
           <Row label="カタログ / スキーマ" value={data ? `${data.config.catalog}.${data.config.schema}` : null} mono />
+        </CardContent>
+      </Card>
+
+      {/* Live order event log: the Lakebase realtime story, per order. */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <h3 className="font-medium text-sm flex items-center gap-2">
+            <ListOrdered className="h-4 w-4" /> 注文イベントログ (書込み → Lakebase コミット → Delta 反映)
+            <span className="ml-auto text-xs font-normal text-muted-foreground">4秒ごと自動更新</span>
+          </h3>
+
+          <div data-live-ticker className="rounded-md bg-muted/40 p-3 flex items-center gap-3">
+            <Timer className="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <div className="text-sm font-semibold">
+                {latest == null
+                  ? 'まだ注文イベントがありません'
+                  : latest.lag_seconds != null
+                    ? `最後の注文が Delta に反映: ${latest.lag_seconds < 1 ? latest.lag_seconds.toFixed(3) : latest.lag_seconds.toFixed(1)}秒`
+                    : `最新注文は Delta 反映待ち (コミットから ${Math.max(0, Math.floor((now - new Date(latest.lakebase_committed_at).getTime()) / 1000))}秒)`}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {latestSyncedLag != null
+                  ? `直近の反映遅延の実測: ${latestSyncedLag < 1 ? latestSyncedLag.toFixed(3) : latestSyncedLag.toFixed(1)}秒 (Delta 反映時刻 − Lakebase コミット時刻)`
+                  : 'Delta への反映を待っています (CDC はコミット後おおむね数秒で反映)'}
+              </div>
+            </div>
+          </div>
+
+          {events && events.length > 0 && (
+            <div className="space-y-2">
+              {events.map((e) => {
+                const waiting = e.delta_synced_at == null;
+                const focused = focusOrder === e.id;
+                return (
+                  <div
+                    key={e.id}
+                    data-order-event={e.id}
+                    className={`rounded-md border px-3 py-2 text-xs ${focused ? 'ring-2 ring-primary/50 bg-primary/5' : ''}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="font-mono text-muted-foreground">#{e.id.slice(0, 8)}</span>
+                      <span className="font-medium">{e.customer_name} 様</span>
+                      <span className="text-muted-foreground">
+                        {fmtPrice(e.total_price, e.currency)} · {e.channel === 'chat' ? 'チャット注文' : '画面注文'}
+                      </span>
+                      <span className="ml-auto text-muted-foreground">{fmtAgo(e.lakebase_committed_at, now)}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-mono">
+                      <span className="rounded bg-muted px-1.5 py-0.5">
+                        アプリ書込{e.commit_ms != null ? ` ${(e.commit_ms / 1000).toFixed(e.commit_ms < 100 ? 2 : 1)}秒` : ''}
+                      </span>
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      <span className="rounded bg-muted px-1.5 py-0.5">
+                        Lakebase コミット {new Date(e.lakebase_committed_at).toLocaleTimeString('ja-JP', { hour12: false })}
+                      </span>
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      {waiting ? (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">Delta 反映待ち…</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-green-100 px-1.5 py-0.5 text-green-800">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Delta 反映 {new Date(e.delta_synced_at!).toLocaleTimeString('ja-JP', { hour12: false })}
+                          {e.lag_seconds != null &&
+                            ` (+${e.lag_seconds < 1 ? e.lag_seconds.toFixed(3) : e.lag_seconds.toFixed(1)}秒)`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

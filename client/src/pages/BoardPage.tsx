@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, CardContent } from '@databricks/appkit-ui/react';
 import { ChefHat } from 'lucide-react';
 import { api, fmtPrice, STATUS_LABEL, type Me, type Order, type Store } from '../lib/api';
+import { fmtAgo, useNow } from '../lib/use-now';
 
 const COLUMNS: { status: Order['status']; next: Order['status'] | null; nextLabel: string }[] = [
   { status: 'received', next: 'preparing', nextLabel: '調理開始' },
@@ -15,6 +16,11 @@ export function BoardPage({ me }: { me: Me | null }) {
   const [storeId, setStoreId] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState('');
+  // New-arrival pulse: ids seen so far (null = first load not done yet;
+  // the first load marks everything known so nothing pulses on open).
+  const knownIds = useRef<Set<string> | null>(null);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const now = useNow(1000);
 
   useEffect(() => {
     void api
@@ -26,11 +32,36 @@ export function BoardPage({ me }: { me: Me | null }) {
       .catch(() => setStores([]));
   }, [me]);
 
+  useEffect(() => {
+    knownIds.current = null;
+  }, [storeId]);
+
   const load = useCallback(() => {
     if (!storeId) return;
     api
       .board(storeId)
-      .then((o) => setOrders(o))
+      .then((o) => {
+        if (knownIds.current === null) {
+          knownIds.current = new Set(o.map((x) => x.id));
+        } else {
+          const fresh = o.filter((x) => !knownIds.current!.has(x.id)).map((x) => x.id);
+          if (fresh.length > 0) {
+            fresh.forEach((id) => knownIds.current!.add(id));
+            setNewIds((prev) => new Set([...prev, ...fresh]));
+            // The pulse is one-shot: drop the marker once it has played.
+            setTimeout(
+              () =>
+                setNewIds((prev) => {
+                  const next = new Set(prev);
+                  fresh.forEach((id) => next.delete(id));
+                  return next;
+                }),
+              3000,
+            );
+          }
+        }
+        setOrders(o);
+      })
       .catch((e) => setError(String(e)));
   }, [storeId]);
 
@@ -80,7 +111,7 @@ export function BoardPage({ me }: { me: Me | null }) {
                 {STATUS_LABEL[col.status]} ({list.length})
               </div>
               {list.map((o) => (
-                <Card key={o.id}>
+                <Card key={o.id} data-order-card={o.id} className={newIds.has(o.id) ? 'animate-order-pulse' : ''}>
                   <CardContent className="p-3 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="font-medium">{o.customer_name} 様</span>
@@ -94,7 +125,7 @@ export function BoardPage({ me }: { me: Me | null }) {
                       ))}
                     </div>
                     <div className="flex justify-between items-center text-xs text-muted-foreground">
-                      <span>{new Date(o.created_at).toLocaleTimeString('ja-JP')}</span>
+                      <span data-order-ago>{fmtAgo(o.created_at, now)}</span>
                       <span>{fmtPrice(o.total_price, o.currency)}</span>
                     </div>
                     {col.next && (
