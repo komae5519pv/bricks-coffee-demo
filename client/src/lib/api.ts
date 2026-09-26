@@ -107,6 +107,8 @@ export interface OrderEvent {
   commit_ms: number | null;
   delta_synced_at: string | null;
   lag_seconds: number | null;
+  /** Unsynced for 5+ minutes: warehouse polling for it stopped; show a warning. */
+  sync_stalled: boolean;
 }
 
 export interface HistorySummary {

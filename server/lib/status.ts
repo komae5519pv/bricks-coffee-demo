@@ -80,6 +80,8 @@ export interface OrderEvent {
   delta_synced_at: string | null;
   /** delta_synced_at - lakebase_committed_at in seconds, null until reflected. */
   lag_seconds: number | null;
+  /** Unsynced for >= SYNC_STALE_MS: the UI warns and the warehouse is no longer polled for it. */
+  sync_stalled: boolean;
 }
 
 /** Delta-side sync map cache: re-query the warehouse only when something is
@@ -163,7 +165,8 @@ export async function getLakebaseStatus(spDb: DbLike): Promise<LakebaseStatus> {
       channel: string;
       status: string;
     }>(
-      'SELECT id, created_at::text, channel, status FROM cofee_shop.orders ORDER BY created_at DESC LIMIT 1',
+      `SELECT id, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at, channel, status
+       FROM cofee_shop.orders ORDER BY created_at DESC LIMIT 1`,
     );
     // wal2delta exists only after Lakehouse Sync has been enabled on the branch.
     let wal2delta: unknown[] | null = null;
@@ -201,15 +204,30 @@ function asUtcIso(s: string): string {
 }
 
 /**
+ * Orders older than this without a Delta reflection are treated as
+ * "sync stalled": the event log shows a warning instead of 反映待ち and the
+ * warehouse is no longer re-queried for them — otherwise a broken CDC
+ * pipeline would keep a serverless warehouse awake (billed) for as long as
+ * anyone has the status page open.
+ */
+export const SYNC_STALE_MS = 5 * 60 * 1000;
+
+/**
  * Recent order events for the status page's live log: each order's
  * Lakebase commit time, its measured app-side commit latency (when placed
  * through this process), and when the CDC pipeline first materialized it
  * in the Delta history table (null while still in flight).
  *
  * Cost shape: the Lakebase query runs every poll (milliseconds); the
- * warehouse statement runs only while the newest ids are unsynced.
+ * warehouse statement runs only for unsynced ids younger than SYNC_STALE_MS.
+ *
+ * `runSql` is injectable for tests; production uses the warehouse.
  */
-export async function getOrderEvents(spDb: DbLike, limit = 8): Promise<OrderEvent[]> {
+export async function getOrderEvents(
+  spDb: DbLike,
+  limit = 8,
+  runSql: (statement: string) => Promise<(string | null)[][]> = runStatement,
+): Promise<OrderEvent[]> {
   const { rows: orders } = await spDb.query<{
     id: string;
     customer_name: string;
@@ -219,21 +237,29 @@ export async function getOrderEvents(spDb: DbLike, limit = 8): Promise<OrderEven
     currency: string;
     created_at: string;
   }>(
-    `SELECT id, customer_name, channel, status, total_price::text, currency, created_at::text
+    // ISO 8601 + Z (Safari-safe) — plain ::text yields '+00', which only
+    // Chromium-based browsers parse.
+    `SELECT id, customer_name, channel, status, total_price::text, currency,
+            to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
      FROM cofee_shop.orders ORDER BY created_at DESC LIMIT ${Math.min(Math.max(limit, 1), 50)}`,
   );
   if (orders.length === 0) return [];
 
+  const nowMs = Date.now();
+  const ageOf = new Map(orders.map((o) => [o.id, nowMs - new Date(o.created_at).getTime()]));
   const ids = orders.map((o) => o.id).filter((id) => UUID_RE.test(id));
   const cacheKey = ids.join(',');
   const cached = deltaCache?.key === cacheKey ? deltaCache.synced : null;
   const missing = cached ? ids.filter((id) => !cached.has(id)) : ids;
+  // Only still-plausible ids are worth a warehouse round-trip; stalled
+  // ones (>SYNC_STALE_MS) stay unsynced and are flagged for the UI.
+  const queryIds = missing.filter((id) => (ageOf.get(id) ?? Infinity) < SYNC_STALE_MS);
   let synced = cached;
-  if (!cached || missing.length > 0) {
-    const rows = await runStatement(
+  if (queryIds.length > 0) {
+    const rows = await runSql(
       `SELECT id, CAST(MIN(_timestamp) AS STRING)
        FROM ${process.env.COFFEE_CATALOG}.${process.env.COFFEE_SCHEMA}.lb_orders_history
-       WHERE id IN (${ids.map((id) => `'${id}'`).join(',')})
+       WHERE id IN (${queryIds.map((id) => `'${id}'`).join(',')})
        GROUP BY id`,
     );
     const fresh = new Map<string, string>();
@@ -241,6 +267,9 @@ export async function getOrderEvents(spDb: DbLike, limit = 8): Promise<OrderEven
     // Keep previously-known sync times for ids the warehouse didn't return
     // yet (still in flight) — they stay null until reflected.
     synced = new Map([...(cached ?? []), ...fresh]);
+    deltaCache = { key: cacheKey, synced };
+  } else if (!cached) {
+    synced = new Map();
     deltaCache = { key: cacheKey, synced };
   }
 
@@ -261,6 +290,7 @@ export async function getOrderEvents(spDb: DbLike, limit = 8): Promise<OrderEven
       commit_ms: commitMsByOrder.get(o.id) ?? null,
       delta_synced_at: deltaSyncedAt,
       lag_seconds: lag,
+      sync_stalled: deltaSyncedAt == null && (ageOf.get(o.id) ?? 0) >= SYNC_STALE_MS,
     };
   });
 }

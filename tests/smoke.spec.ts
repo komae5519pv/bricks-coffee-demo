@@ -12,6 +12,11 @@
 import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.APP_URL ?? 'http://localhost:8000';
+// Deployed apps sit behind SSO; APP_TOKEN (OAuth token) lets the suite run
+// against them — locally it is simply unset.
+if (process.env.APP_TOKEN) {
+  test.use({ extraHTTPHeaders: { Authorization: `Bearer ${process.env.APP_TOKEN}` } });
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto(BASE_URL);
@@ -34,7 +39,9 @@ test('order flow: add to cart and place an order', async ({ page }) => {
   await page.getByRole('button', { name: /追加/ }).first().click();
   await page.getByPlaceholder('お名前(呼び出し用)').fill('Smoke Test');
   await page.getByRole('button', { name: 'この内容で注文する' }).click();
-  await expect(page.getByText(/注文 #[0-9a-f]{8} を受け付けました/)).toBeVisible({ timeout: 30000 });
+  // success toast carries the server-measured Lakebase commit latency
+  await expect(page.getByText(/注文 #[0-9a-f]{8} を Lakebase にコミットしました/)).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText(/Lakebase にコミットしました \(\d+(\.\d+)?秒\)/)).toBeVisible();
 });
 
 test('status page shows agent, OBO token, and sync sections', async ({ page }) => {

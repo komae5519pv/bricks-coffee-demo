@@ -74,7 +74,7 @@ export function StatusPage() {
   useEffect(() => {
     if (scrolledRef.current || !focusOrder || !events?.some((e) => e.id === focusOrder)) return;
     scrolledRef.current = true;
-    document.querySelector(`[data-order-event="${focusOrder}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.querySelector(`[data-order-event="${CSS.escape(focusOrder)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [events, focusOrder]);
 
   const lag = data?.delta_sync?.lag_seconds;
@@ -257,14 +257,18 @@ export function StatusPage() {
               <div className="text-sm font-semibold">
                 {latest == null
                   ? 'まだ注文イベントがありません'
-                  : latest.lag_seconds != null
-                    ? `最後の注文が Delta に反映: ${latest.lag_seconds < 1 ? latest.lag_seconds.toFixed(3) : latest.lag_seconds.toFixed(1)}秒`
-                    : `最新注文は Delta 反映待ち (コミットから ${Math.max(0, Math.floor((now - new Date(latest.lakebase_committed_at).getTime()) / 1000))}秒)`}
+                  : latest.sync_stalled
+                    ? 'CDC 同期が遅れています (最後の注文が5分以上 Delta に未反映)'
+                    : latest.lag_seconds != null
+                      ? `最後の注文が Delta に反映: ${latest.lag_seconds < 1 ? latest.lag_seconds.toFixed(3) : latest.lag_seconds.toFixed(1)}秒`
+                      : `最新注文は Delta 反映待ち (コミットから ${Math.max(0, Math.floor((now - new Date(latest.lakebase_committed_at).getTime()) / 1000))}秒)`}
               </div>
               <div className="text-xs text-muted-foreground">
-                {latestSyncedLag != null
-                  ? `直近の反映遅延の実測: ${latestSyncedLag < 1 ? latestSyncedLag.toFixed(3) : latestSyncedLag.toFixed(1)}秒 (Delta 反映時刻 − Lakebase コミット時刻)`
-                  : 'Delta への反映を待っています (CDC はコミット後おおむね数秒で反映)'}
+                {latest?.sync_stalled
+                  ? 'Lakehouse Sync (wal2delta) の状態を確認してください。5分を超えた未反映注文の Delta 再クエリは停止しています'
+                  : latestSyncedLag != null
+                    ? `直近の反映遅延の実測: ${latestSyncedLag < 1 ? latestSyncedLag.toFixed(3) : latestSyncedLag.toFixed(1)}秒 (Delta 反映時刻 − Lakebase コミット時刻)`
+                    : 'Delta への反映を待っています (CDC はコミット後おおむね数秒で反映)'}
               </div>
             </div>
           </div>
@@ -298,7 +302,13 @@ export function StatusPage() {
                       </span>
                       <ArrowRight className="h-3 w-3 text-muted-foreground" />
                       {waiting ? (
-                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">Delta 反映待ち…</span>
+                        e.sync_stalled ? (
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">
+                            Delta 同期遅延 (5分超・再クエリ停止)
+                          </span>
+                        ) : (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">Delta 反映待ち…</span>
+                        )
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded bg-green-100 px-1.5 py-0.5 text-green-800">
                           <CheckCircle2 className="h-3 w-3" />
