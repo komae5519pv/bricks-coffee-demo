@@ -53,6 +53,7 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
     // index; a negative index means reverse the arc).
     const topology = worldData as {
       arcs: [number, number][][];
+      transform: { scale: [number, number]; translate: [number, number] };
       objects: {
         countries: {
           geometries: ({
@@ -63,9 +64,21 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
         };
       };
     };
+    // TopoJSON arcs are delta-encoded quantized integers; transform turns
+    // them into real lon/lat. Decode: cumulative sum, then scale+translate.
+    const scale = topology.transform.scale;
+    const translate = topology.transform.translate;
     const arc = (idx: number): [number, number][] => {
-      const a = topology.arcs[idx < 0 ? ~idx : idx];
-      return idx < 0 ? [...a].reverse() : a;
+      const raw = topology.arcs[idx < 0 ? ~idx : idx];
+      const pts: [number, number][] = [];
+      let x = 0;
+      let y = 0;
+      for (const [dx, dy] of raw) {
+        x += dx;
+        y += dy;
+        pts.push([x * scale[0] + translate[0], y * scale[1] + translate[1]]);
+      }
+      return idx < 0 ? pts.reverse() : pts;
     };
     const paths: string[] = [];
     for (const g of topology.objects.countries.geometries) {
@@ -106,8 +119,8 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
               <path
                 key={d.slice(0, 60)}
                 d={d}
-                fill="var(--chart-track)"
-                stroke="var(--background)"
+                fill="var(--chart-land)"
+                stroke="var(--chart-land-stroke)"
                 strokeWidth={0.5}
               />
             ))}

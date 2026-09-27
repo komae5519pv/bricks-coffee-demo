@@ -113,6 +113,8 @@
   --chart-cat-4: #eda100;
   --chart-cat-5: #e87ba4;
   --chart-cat-6: #4a3aa7;
+  --chart-land: #d4d4d0;      /* neutral landmass fill (darker than bg) */
+  --chart-land-stroke: #f5f5f4; /* country border, one step off surface */
 }
 
 /* KPI number tween: respects reduced motion (emil/review-animations) */

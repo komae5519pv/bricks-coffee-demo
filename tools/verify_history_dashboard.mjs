@@ -71,6 +71,46 @@ if (liveCheck.bubbleLen < 1) failures.push('no bubble data');
 if (liveCheck.heatmapLen < 1) failures.push('no heatmap data');
 if (liveCheck.geoLen < 12) failures.push(`store_geo has ${liveCheck.geoLen} stores (want 12)`);
 
+// ---------- 1. world map: land polygons actually render ----------
+// (regression: SVG elements existed but land geometry was invisible —
+// delta-encoded TopoJSON was used as absolute lon/lat)
+const mapCheck = await page.evaluate(() => {
+  const svg = document.querySelector('svg[aria-label="世界地図"]');
+  if (!svg) return { hasSvg: false };
+  const paths = [...svg.querySelectorAll('path')];
+  const landPaths = paths.filter((p) => {
+    const fill = p.getAttribute('fill');
+    return fill === 'var(--chart-land)' || fill === '#d4d4d0';
+  });
+  const bgFill = getComputedStyle(document.body).backgroundColor;
+  const landFill = landPaths.length > 0 ? getComputedStyle(landPaths[0]).fill : null;
+  // store bubbles sit on the map: Tokyo's bubble cx should be east of center
+  const bubbles = [...svg.querySelectorAll('circle')];
+  const tokyo = bubbles.find((c) => {
+    const title = c.parentElement?.querySelector('title')?.textContent ?? '';
+    return title.includes('東京') || title.includes('TYO');
+  });
+  const tokyoX = tokyo ? Number(tokyo.getAttribute('cx')) : null;
+  return {
+    hasSvg: true,
+    pathCount: paths.length,
+    landPathCount: landPaths.length,
+    landFill,
+    bgFill,
+    landDistinct: landFill != null && landFill !== bgFill,
+    tokyoX,
+    tokyoEastOfCenter: tokyoX != null && tokyoX > 360,
+  };
+});
+console.log('map structure:', JSON.stringify(mapCheck));
+if (!mapCheck.hasSvg) failures.push('world map SVG missing');
+else {
+  if (mapCheck.landPathCount < 100) failures.push(`land paths too few (${mapCheck.landPathCount} — want 100+ country polygons)`);
+  if (!mapCheck.landDistinct) failures.push(`land fill matches background (${mapCheck.landFill})`);
+  if (mapCheck.tokyoX != null && !mapCheck.tokyoEastOfCenter) failures.push(`Tokyo bubble misplaced (cx=${mapCheck.tokyoX}, want >360 = east hemisphere)`);
+}
+await page.screenshot({ path: '/tmp/history-v3-map-check.png', clip: { x: 0, y: 600, width: 720, height: 500 } });
+
 // ---------- 1. v3 structure ----------
 const structure = await page.evaluate(() => {
   const text = document.body.innerText;
