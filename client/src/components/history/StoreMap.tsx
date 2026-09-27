@@ -51,19 +51,7 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
     // TopoJSON -> GeoJSON, self-implemented (world-atlas 110m structure is
     // simple: arcs are absolute lon/lat pairs, geometries reference them by
     // index; a negative index means reverse the arc).
-    const topology = worldData as {
-      arcs: [number, number][][];
-      transform: { scale: [number, number]; translate: [number, number] };
-      objects: {
-        countries: {
-          geometries: ({
-            type: 'Polygon' | 'MultiPolygon';
-            arcs: number[][] | number[][][];
-            properties: { name: string };
-          })[];
-        };
-      };
-    };
+    const topology = worldData;
     // TopoJSON arcs are delta-encoded quantized integers; transform turns
     // them into real lon/lat. Decode: cumulative sum, then scale+translate.
     const scale = topology.transform.scale;

@@ -93,7 +93,7 @@ export function TrendChart({ data }: { data: import('../../lib/api').HistorySumm
                 width={70}
               />
               <Tooltip content={<ChartTooltipCard fmt={fmt} />} cursor={{ stroke: 'var(--chart-track)', strokeWidth: 1 }} />
-              <Area
+              <Area isAnimationActive={false}
                 type="monotone"
                 dataKey={metric}
                 stroke="var(--chart-primary)"

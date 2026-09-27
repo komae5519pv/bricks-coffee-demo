@@ -50,7 +50,7 @@ export function CategoryDonut({ data }: { data: import('../../lib/api').HistoryS
         <div className="relative h-[260px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie
+              <Pie isAnimationActive={false}
                 data={slices}
                 dataKey="value"
                 nameKey="name"

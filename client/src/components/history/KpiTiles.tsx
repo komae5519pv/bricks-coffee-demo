@@ -22,6 +22,7 @@ function KpiTile({
   icon,
   label,
   value,
+  format,
   baseline,
   sparkValues,
   hero,
@@ -29,6 +30,8 @@ function KpiTile({
   icon: React.ReactNode;
   label: string;
   value: number;
+  /** value formatter: ¥ for money, N件 for counts (B2: no ¥ on count tiles) */
+  format: (v: number) => string;
   baseline: string;
   sparkValues: number[];
   hero?: boolean;
@@ -46,7 +49,7 @@ function KpiTile({
         </div>
         <div className="flex items-end justify-between gap-2">
           <div className={`font-semibold tabular-nums tracking-tight ${hero ? 'text-4xl' : 'text-2xl'}`}>
-            {fmtPrice(tweened, 'JPY')}
+            {format(tweened)}
           </div>
           <Sparkline values={sparkValues} className="h-8 w-24 shrink-0" />
         </div>
@@ -70,6 +73,7 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
         icon={<Wallet className="h-4 w-4" />}
         label="今日の売上"
         value={Number(data.today_revenue)}
+        format={(v) => fmtPrice(v, 'JPY')}
         baseline={`昨日最終 ${fmtPrice(data.yesterday_revenue, 'JPY')} / 過去データ同日平均 ${fmtPrice(data.hist_avg_daily_revenue, 'JPY')}`}
         sparkValues={sparkRevenue}
       />
@@ -77,6 +81,7 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
         icon={<ShoppingBag className="h-4 w-4" />}
         label="今日の注文数"
         value={Number(data.today_orders)}
+        format={(v) => `${v}件`}
         baseline={`昨日 ${data.yesterday_orders}件 / 過去平均 ${Math.round(Number(data.hist_avg_daily_orders))}件`}
         sparkValues={sparkOrders}
       />
@@ -84,6 +89,7 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
         icon={<Layers className="h-4 w-4" />}
         label="平均客単価"
         value={Number(data.avg_order_value)}
+        format={(v) => fmtPrice(v, 'JPY')}
         baseline={`過去データ平均 ${fmtPrice(data.hist_avg_order_value, 'JPY')}`}
         sparkValues={sparkRevenue.map((r, i) => (sparkOrders[i] > 0 ? Math.round(r / sparkOrders[i]) : 0))}
       />
@@ -91,6 +97,7 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
         icon={<Clock className="h-4 w-4" />}
         label="進行中の注文"
         value={inProgressTotal}
+        format={(v) => `${v}件`}
         baseline={`受付 ${data.in_progress.received}・調理中 ${data.in_progress.preparing}・完成 ${data.in_progress.ready}`}
         sparkValues={sparkOrders}
       />

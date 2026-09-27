@@ -39,7 +39,7 @@ function RankBar({
       </div>
       <div className="h-3 rounded bg-muted overflow-hidden">
         <div
-          className="h-full rounded-r-sm transition-all duration-300"
+          className="h-full rounded-r-sm"
           style={{
             width: `${Math.max(2, (value / max) * 100)}%`,
             background: accent ? 'var(--chart-accent)' : 'var(--chart-primary)',

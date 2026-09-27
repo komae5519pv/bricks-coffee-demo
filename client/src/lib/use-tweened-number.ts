@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
  * re-render never restarts it. transform/opacity-free (textContent swap at
  * 60fps is fine for a number). Reduced-motion: snaps instantly.
  */
-export function useTweenedNumber(target: number, durationMs = 600): number {
+export function useTweenedNumber(target: number, durationMs = 300): number {
   const [display, setDisplay] = useState(target);
   const fromRef = useRef(target);
   const rafRef = useRef<number | null>(null);

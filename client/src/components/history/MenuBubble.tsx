@@ -30,8 +30,11 @@ export function MenuBubble({ data }: { data: import('../../lib/api').HistorySumm
     }));
     const qtys = rows.map((r) => r.qty).sort((a, b) => a - b);
     const prices = rows.map((r) => r.price).sort((a, b) => a - b);
-    const medianQty = qtys[Math.floor(qtys.length / 2)] ?? 0;
-    const medianPrice = prices[Math.floor(prices.length / 2)] ?? 0;
+    // true median: average of the two middle values for even N
+    const medianOf = (arr: number[]) =>
+      arr.length === 0 ? 0 : arr.length % 2 === 1 ? arr[Math.floor(arr.length / 2)] : (arr[arr.length / 2 - 1] + arr[arr.length / 2]) / 2;
+    const medianQty = medianOf(qtys);
+    const medianPrice = medianOf(prices);
     const points = rows.map((r) => ({
       ...r,
       z: Math.sqrt(r.revenue), // bubble size scales with revenue
@@ -55,7 +58,7 @@ export function MenuBubble({ data }: { data: import('../../lib/api').HistorySumm
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-sm">メニューエンジニアリング</h3>
           <SourceBadge live={false} />
-          <span className="ml-auto text-xs text-muted-foreground">X=販売数量・Y=平均単価・サイズ=売上高</span>
+          <span className="ml-auto text-xs text-muted-foreground">X=販売数量・Y=平均単価(サイズ行リスト価格の単純平均)・サイズ=売上高</span>
         </div>
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -114,7 +117,7 @@ export function MenuBubble({ data }: { data: import('../../lib/api').HistorySumm
               <ReferenceLine x={medianQty} stroke="var(--chart-track)" strokeDasharray="4 4" />
               <ReferenceLine y={medianPrice} stroke="var(--chart-track)" strokeDasharray="4 4" />
               {[0, 1, 2, 3].map((q) => (
-                <Scatter
+                <Scatter isAnimationActive={false}
                   key={q}
                   data={points.filter((p) => p.quadrant === q)}
                   fill={QUADRANT_COLORS[q]}
