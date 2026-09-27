@@ -264,7 +264,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
     app.get('/api/history/summary', async (req: Request, res: Response) => {
       try {
         const storeId = qstr(req.query.store_id) || null;
-        const [popular, monthly, hourly, category, store, live, yesterday, histAvg, inProgress] = await Promise.all([
+        const [popular, monthly, hourly, category, store, live, yesterday, histAvg, inProgress, daily, bubble, heatmap, storeGeo] = await Promise.all([
           // popular items by revenue (with qty for the toggle)
           spDb.query(
             `SELECT m.item_name,
@@ -376,6 +376,54 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
                AND ($1::text IS NULL OR store_id = $1)`,
             [storeId],
           ),
+          // last 7 days for KPI sparklines (live orders only)
+          spDb.query(
+            `SELECT created_at::date::text AS day,
+                    SUM(total_price)::text AS revenue,
+                    COUNT(*)::text AS orders
+             FROM cofee_shop.orders
+             WHERE created_at::date >= CURRENT_DATE - INTERVAL '6 days' AND status <> 'cancelled'
+               AND ($1::text IS NULL OR store_id = $1)
+             GROUP BY 1 ORDER BY 1`,
+            [storeId],
+          ),
+          // menu engineering bubble: qty vs avg price, size = revenue
+          spDb.query(
+            `SELECT m.item_name,
+                    SUM(h.quantity)::text AS qty,
+                    AVG(m.price)::text AS avg_price,
+                    SUM(h.quantity * m.price)::text AS revenue,
+                    m.category
+             FROM cofee_shop.historical_orders h
+             JOIN cofee_shop.menu_items m ON m.sku = h.sku
+             WHERE ($1::text IS NULL OR h.store_id = $1)
+             GROUP BY m.item_name, m.category
+             ORDER BY SUM(h.quantity * m.price) DESC
+             LIMIT 30`,
+            [storeId],
+          ),
+          // weekday x hour heatmap (UTC)
+          spDb.query(
+            `SELECT EXTRACT(DOW FROM h.created_at)::int AS dow,
+                    EXTRACT(HOUR FROM h.created_at)::int AS hour,
+                    COUNT(DISTINCT h.order_id)::text AS orders
+             FROM cofee_shop.historical_orders h
+             WHERE ($1::text IS NULL OR h.store_id = $1)
+             GROUP BY 1, 2`,
+            [storeId],
+          ),
+          // store geo + revenue for the map (always all stores; the selector
+          // only highlights, doesn't filter the map)
+          spDb.query(
+            `SELECT s.store_id, s.store_name, s.country, s.lat::text, s.lon::text,
+                    COALESCE(SUM(h.quantity * m.price), 0)::text AS revenue
+             FROM cofee_shop.stores s
+             LEFT JOIN cofee_shop.historical_orders h ON h.store_id = s.store_id
+             LEFT JOIN cofee_shop.menu_items m ON m.sku = h.sku
+             GROUP BY s.store_id, s.store_name, s.country, s.lat, s.lon
+             ORDER BY revenue DESC`,
+            [],
+          ),
         ]);
         const todayRevenue = Number(live.rows[0]?.today_revenue ?? 0);
         const todayOrders = Number(live.rows[0]?.today_orders ?? 0);
@@ -395,6 +443,10 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           hist_avg_daily_revenue: histAvg.rows[0]?.avg_revenue ?? '0',
           hist_avg_daily_orders: histAvg.rows[0]?.avg_orders ?? '0',
           hist_avg_order_value: histAvg.rows[0]?.avg_order_value ?? '0',
+          daily: daily.rows,
+          bubble: bubble.rows,
+          heatmap: heatmap.rows,
+          store_geo: storeGeo.rows,
         });
       } catch (e) {
         res.status(500).json({ error: String(e) });

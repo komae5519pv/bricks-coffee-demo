@@ -439,6 +439,27 @@ ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS scenes TEXT NOT NULL 
 ALTER TABLE cofee_shop.menu_items ADD COLUMN IF NOT EXISTS target_tags TEXT NOT NULL DEFAULT '';
 `;
 
+/**
+ * Store lat/lon for the world-map bubble chart. ADD COLUMN IF NOT EXISTS is
+ * idempotent; the UPDATEs fill the 12 known stores (metadata, not metrics).
+ */
+const STORE_GEO_MIGRATION = `
+ALTER TABLE cofee_shop.stores ADD COLUMN IF NOT EXISTS lat NUMERIC(6,3);
+ALTER TABLE cofee_shop.stores ADD COLUMN IF NOT EXISTS lon NUMERIC(6,3);
+UPDATE cofee_shop.stores SET lat = 35.681, lon = 139.767 WHERE store_id = 'TYO001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 35.659, lon = 139.700 WHERE store_id = 'TYO002' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 34.702, lon = 135.496 WHERE store_id = 'OSA001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 35.167, lon = 136.906 WHERE store_id = 'NGO001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 40.758, lon = -73.985 WHERE store_id = 'NYC001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 40.696, lon = -73.993 WHERE store_id = 'NYC002' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 37.774, lon = -122.419 WHERE store_id = 'SFO001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 51.513, lon = -0.136  WHERE store_id = 'LON001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 1.304,  lon = 103.832 WHERE store_id = 'SIN001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = -33.861, lon = 151.210 WHERE store_id = 'SYD001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 48.860, lon = 2.362   WHERE store_id = 'PAR001' AND lat IS NULL;
+UPDATE cofee_shop.stores SET lat = 52.524, lon = 13.405  WHERE store_id = 'BER001' AND lat IS NULL;
+`;
+
 /** Run once at startup, before the server accepts requests. */
 export async function initializeDatabase(db: BootstrapDb, serving: EmbeddingsInvoker): Promise<void> {
   await db.query('CREATE SCHEMA IF NOT EXISTS cofee_shop');
@@ -451,6 +472,7 @@ export async function initializeDatabase(db: BootstrapDb, serving: EmbeddingsInv
   await db.query(PREFERENCES_SEED);
   await db.query(CDC_REPLICA_IDENTITY);
   await db.query(IMAGE_COLUMNS_MIGRATION);
+  await db.query(STORE_GEO_MIGRATION);
   await backfillMenuImages(db);
   await backfillEmbeddings(db, serving);
   await db.query(HNSW_INDEX);
