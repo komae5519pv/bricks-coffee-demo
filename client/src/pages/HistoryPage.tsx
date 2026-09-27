@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell,
 } from 'recharts';
 import { api, fmtPrice, type HistorySummary, type Store } from '../lib/api';
 
@@ -92,10 +91,11 @@ export function HistoryPage() {
         month: m.month,
         revenue: Number(m.revenue),
         orders: Number(m.orders),
+        is_live: m.is_live,
       })),
     [data],
   );
-  const currentMonth = trendData.length > 0 ? trendData[trendData.length - 1].month : null;
+  const liveMonth = trendData.find((m) => m.is_live)?.month ?? null;
 
   const hourlyData = useMemo(
     () =>
@@ -125,15 +125,15 @@ export function HistoryPage() {
     [data, storeId],
   );
 
-  const popularData = useMemo(
-    () =>
-      (data?.popular ?? []).map((p) => ({
-        item: p.item_name,
-        revenue: Number(p.revenue),
-        qty: Number(p.qty),
-      })),
-    [data],
-  );
+  const popularData = useMemo(() => {
+    const rows = (data?.popular ?? []).map((p) => ({
+      item: p.item_name,
+      revenue: Number(p.revenue),
+      qty: Number(p.qty),
+    }));
+    // server returns revenue-ordered; re-sort when the toggle shows qty
+    return popularMetric === 'qty' ? [...rows].sort((a, b) => b.qty - a.qty) : rows;
+  }, [data, popularMetric]);
 
   const maxCategory = Math.max(1, ...categoryData.map((c) => c.revenue));
   const maxPopular = Math.max(1, ...popularData.map((p) => (popularMetric === 'revenue' ? p.revenue : p.qty)));
@@ -145,7 +145,7 @@ export function HistoryPage() {
           <BarChart3 className="h-5 w-5" /> 売上・履歴
         </h2>
         <select
-          className="h-11 sm:h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+          className="h-11 sm:h-11 max-w-full rounded-md border bg-background px-3 text-sm"
           value={storeId}
           onChange={(e) => setStoreId(e.target.value)}
         >
@@ -197,7 +197,7 @@ export function HistoryPage() {
               <Button
                 size="sm"
                 variant={trendMetric === 'revenue' ? 'default' : 'outline'}
-                className="h-8 text-xs"
+                className="h-11 text-xs"
                 onClick={() => setTrendMetric('revenue')}
               >
                 売上
@@ -205,7 +205,7 @@ export function HistoryPage() {
               <Button
                 size="sm"
                 variant={trendMetric === 'orders' ? 'default' : 'outline'}
-                className="h-8 text-xs"
+                className="h-11 text-xs"
                 onClick={() => setTrendMetric('orders')}
               >
                 注文数
@@ -227,17 +227,31 @@ export function HistoryPage() {
                   formatter={(v) => [trendMetric === 'revenue' ? fmt(Number(v)) : `${Number(v)}件`, trendMetric === 'revenue' ? '売上' : '注文数']}
                   cursor={{ fill: CHART_TRACK, opacity: 0.3 }}
                 />
-                <Bar dataKey={trendMetric} radius={[4, 4, 0, 0]} maxBarSize={24}>
-                  {trendData.map((d, i) => (
-                    <Cell key={d.month} fill={i === trendData.length - 1 ? CHART_ACCENT : CHART_PRIMARY} />
-                  ))}
-                </Bar>
+                <Bar
+                  dataKey={trendMetric}
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={24}
+                  shape={(props: { x: number; y: number; width: number; height: number }, index?: string | number) => {
+                    const i = Number(index ?? 0);
+                    const isLive = trendData[i]?.is_live;
+                    return (
+                      <rect
+                        x={props.x}
+                        y={props.y}
+                        width={props.width}
+                        height={props.height}
+                        fill={isLive ? CHART_ACCENT : CHART_PRIMARY}
+                        rx={4}
+                      />
+                    );
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          {currentMonth && (
+          {liveMonth && (
             <p className="text-xs text-muted-foreground">
-              当月 ({currentMonth}) はライブの今日分を含む (オレンジ)。過去月は履歴データ。
+              当月 ({liveMonth}) はライブの注文 (Lakebase) のみ (オレンジ)。履歴月は過去データ (〜{trendData.filter((m) => !m.is_live).slice(-1)[0]?.month ?? '—'})。
             </p>
           )}
         </CardContent>
@@ -277,7 +291,7 @@ export function HistoryPage() {
         <Card>
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <h3 className="font-medium text-sm">時間帯別注文分布</h3>
+              <h3 className="font-medium text-sm">時間帯別注文分布 (UTC)</h3>
               <Badge live={false} />
             </div>
             <div className="h-[240px]">
@@ -335,7 +349,7 @@ export function HistoryPage() {
                 <Button
                   size="sm"
                   variant={popularMetric === 'revenue' ? 'default' : 'outline'}
-                  className="h-8 text-xs"
+                  className="h-11 text-xs"
                   onClick={() => setPopularMetric('revenue')}
                 >
                   売上
@@ -343,7 +357,7 @@ export function HistoryPage() {
                 <Button
                   size="sm"
                   variant={popularMetric === 'qty' ? 'default' : 'outline'}
-                  className="h-8 text-xs"
+                  className="h-11 text-xs"
                   onClick={() => setPopularMetric('qty')}
                 >
                   点数

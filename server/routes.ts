@@ -277,15 +277,30 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
              GROUP BY m.item_name ORDER BY SUM(h.quantity * m.price) DESC LIMIT 10`,
             [storeId],
           ),
-          // monthly revenue + orders
+          // monthly revenue + orders: historical months, UNION ALL the live
+          // current month so the trend really continues into today (accent bar)
           spDb.query(
-            `SELECT to_char(date_trunc('month', h.created_at), 'YYYY-MM') AS month,
-                    SUM(h.quantity * m.price)::text AS revenue,
-                    COUNT(DISTINCT h.order_id)::text AS orders
-             FROM cofee_shop.historical_orders h
-             JOIN cofee_shop.menu_items m ON m.sku = h.sku
-             WHERE ($1::text IS NULL OR h.store_id = $1)
-             GROUP BY 1 ORDER BY 1`,
+            `SELECT month, revenue, orders, is_live FROM (
+               SELECT to_char(date_trunc('month', h.created_at), 'YYYY-MM') AS month,
+                      SUM(h.quantity * m.price)::text AS revenue,
+                      COUNT(DISTINCT h.order_id)::text AS orders,
+                      false AS is_live
+               FROM cofee_shop.historical_orders h
+               JOIN cofee_shop.menu_items m ON m.sku = h.sku
+               WHERE ($1::text IS NULL OR h.store_id = $1)
+               GROUP BY 1
+               UNION ALL
+               SELECT to_char(date_trunc('month', o.created_at), 'YYYY-MM') AS month,
+                      SUM(o.total_price)::text AS revenue,
+                      COUNT(*)::text AS orders,
+                      true AS is_live
+               FROM cofee_shop.orders o
+               WHERE date_trunc('month', o.created_at) = date_trunc('month', CURRENT_DATE)
+                 AND o.status <> 'cancelled'
+                 AND ($1::text IS NULL OR o.store_id = $1)
+               GROUP BY 1
+             ) m
+             ORDER BY month`,
             [storeId],
           ),
           // hourly order distribution

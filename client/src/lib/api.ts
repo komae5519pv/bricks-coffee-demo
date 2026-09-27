@@ -113,7 +113,7 @@ export interface OrderEvent {
 
 export interface HistorySummary {
   popular: { item_name: string; revenue: string; qty: string; orders: string }[];
-  monthly: { month: string; revenue: string; orders: string }[];
+  monthly: { month: string; revenue: string; orders: string; is_live: boolean }[];
   hourly: { hour: number; orders: string }[];
   category: { category: string; revenue: string }[];
   store: { store_id: string; store_name: string; revenue: string }[];

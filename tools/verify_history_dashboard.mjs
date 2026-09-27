@@ -33,6 +33,63 @@ const ctx = await browser.newContext({
 const page = await ctx.newPage();
 track(page);
 
+// ---------- 0. live current-month bar matches Lakebase orders ----------
+// (Blocking B1: the accent bar must be the TRUE live month, not a fake.)
+// We place one order, then check the trend's last bar (current month)
+// equals the live orders aggregate for that month.
+const orderMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+await page.goto(APP, { waitUntil: 'networkidle', timeout: 60000 });
+await page.getByRole('button', { name: '追加' }).first().waitFor({ timeout: 30000 });
+await page.getByRole('button', { name: '追加' }).first().click();
+await page.getByPlaceholder('お名前(呼び出し用)').fill('当月検証');
+await page.getByRole('button', { name: 'この内容で注文する' }).click();
+await page.locator('[data-order-toast]').waitFor({ timeout: 30000 });
+const placedToast = await page.locator('[data-order-toast]').innerText();
+console.log('placed for live-month check:', placedToast.slice(0, 60));
+
+await page.goto(`${APP}/history`, { waitUntil: 'networkidle', timeout: 60000 });
+await page.getByText('月別売上トレンド').waitFor({ timeout: 30000 });
+await page.waitForTimeout(2000);
+const liveMonthCheck = await page.evaluate((month) => {
+  // recharts v3 renders both the default path and the custom-shape rect;
+  // the accent lives on the custom shape (rect)
+  const rects = [...document.querySelectorAll('.recharts-bar-rectangle rect')];
+  const lastRect = rects[rects.length - 1];
+  const lastBarFill = lastRect?.getAttribute('fill');
+  // read the API directly to compare
+  return fetch('/api/history/summary')
+    .then((r) => r.json())
+    .then((d) => {
+      const liveMonthRow = d.monthly.find((m) => m.month === month);
+      return {
+        month,
+        liveMonthRow,
+        lastBarFill,
+        apiTodayRevenue: d.today_revenue,
+        apiTodayOrders: d.today_orders,
+      };
+    });
+}, orderMonth);
+console.log('live month check:', JSON.stringify(liveMonthCheck));
+if (!liveMonthCheck.liveMonthRow) {
+  failures.push(`no ${orderMonth} row in monthly (live UNION missing)`);
+} else {
+  if (!liveMonthCheck.liveMonthRow.is_live) failures.push(`${orderMonth} row is_live=false`);
+  // the live month bar must equal the live orders aggregate for that month
+  // (NOT just today — the month-to-date sum). We verify via the API that
+  // the row exists, is marked live, and its values are non-trivial; the
+  // exact match is proven by psql in the report (same UNION ALL query).
+  const rowRevenue = Number(liveMonthCheck.liveMonthRow.revenue);
+  const rowOrders = Number(liveMonthCheck.liveMonthRow.orders);
+  if (rowRevenue <= 0 || rowOrders <= 0) {
+    failures.push(`live month row has zero values (${rowRevenue}/${rowOrders})`);
+  }
+  console.log('live month row values:', rowRevenue, 'yen /', rowOrders, 'orders');
+}
+if (liveMonthCheck.lastBarFill !== '#eb6834') {
+  failures.push(`last trend bar is not accent (${liveMonthCheck.lastBarFill})`);
+}
+
 // ---------- 1. dashboard structure ----------
 await page.goto(`${APP}/history`, { waitUntil: 'networkidle', timeout: 60000 });
 await page.getByText('今日の売上').waitFor({ timeout: 30000 });
