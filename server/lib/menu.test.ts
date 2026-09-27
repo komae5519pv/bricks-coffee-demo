@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { insertOrder, priceCart, searchMenu, getItemsBySkus, type DbLike, type MenuRow } from './menu';
+import { insertOrder, priceCart, searchMenu, getItemsBySkus, getItemsWithVariants, type DbLike, type MenuRow } from './menu';
 
 const LATTE: MenuRow = {
   sku: 'TYO001-LATTE-M',
@@ -70,6 +70,49 @@ describe('searchMenu', () => {
     const result = await searchMenu(dbWith([LATTE]), null, { store_id: 'TYO001', query: 'ラテ' });
     expect(result.mode).toBe('fallback');
     expect(result.rows[0]?.sku).toBe('TYO001-LATTE-M');
+  });
+});
+
+describe('getItemsWithVariants', () => {
+  const HONEY_S: MenuRow = { ...LATTE, sku: 'TYO001-HONEY-S', item_key: 'HONEY', item_name: 'はちみつラテ', size: 'S' };
+  const HONEY_M: MenuRow = { ...LATTE, sku: 'TYO001-HONEY-M', item_key: 'HONEY', item_name: 'はちみつラテ', size: 'M' };
+  const HONEY_L: MenuRow = { ...LATTE, sku: 'TYO001-HONEY-L', item_key: 'HONEY', item_name: 'はちみつラテ', size: 'L' };
+
+  /** Fake DB honoring getItemsWithVariants' SQL: declared SKUs join to every row with the same item_key. */
+  function dbWithVariants(rows: MenuRow[]): DbLike {
+    return {
+      query: <T,>(text: string, values: unknown[] = []) => {
+        if (!text.includes('JOIN declared')) return Promise.resolve({ rows: [] as T[] });
+        const declaredSkus = new Set(values[1] as string[]);
+        const declaredKeys = new Set(rows.filter((r) => declaredSkus.has(r.sku)).map((r) => r.item_key));
+        const out = rows
+          .filter((r) => declaredKeys.has(r.item_key))
+          .map((r) => ({ ...r, declared_sku: [...declaredSkus].find((s) => rows.find((x) => x.sku === s && x.item_key === r.item_key)) ?? r.sku }));
+        return Promise.resolve({ rows: out as T[] });
+      },
+    };
+  }
+
+  it('expands a declared SKU to all active size variants, S/M/L sorted, initial = declared', async () => {
+    const { items, initial_skus } = await getItemsWithVariants(dbWithVariants([HONEY_M, HONEY_L, HONEY_S]), 'TYO001', ['TYO001-HONEY-M']);
+    expect(items.map((r) => r.size)).toEqual(['S', 'M', 'L']);
+    expect(initial_skus).toEqual({ HONEY: 'TYO001-HONEY-M' });
+  });
+
+  it('an explicit L declaration pre-selects L (e.g. "Lで")', async () => {
+    const { initial_skus } = await getItemsWithVariants(dbWithVariants([HONEY_S, HONEY_M, HONEY_L]), 'TYO001', ['TYO001-HONEY-L']);
+    expect(initial_skus.HONEY).toBe('TYO001-HONEY-L');
+  });
+
+  it('declared products stay in request order; unknown SKUs are dropped', async () => {
+    const LATTE_M = LATTE;
+    const { items, initial_skus } = await getItemsWithVariants(dbWithVariants([HONEY_S, HONEY_M, HONEY_L, LATTE_M]), 'TYO001', [
+      'TYO001-HONEY-S',
+      'TYO001-NOPE-M',
+      'TYO001-LATTE-M',
+    ]);
+    expect(items.map((r) => r.item_key)).toEqual(['HONEY', 'HONEY', 'HONEY', 'LATTE']);
+    expect(initial_skus).toEqual({ HONEY: 'TYO001-HONEY-S', LATTE: 'TYO001-LATTE-M' });
   });
 });
 

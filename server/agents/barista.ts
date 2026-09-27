@@ -13,7 +13,7 @@
 import { createAgent, tool, type ToolkitEntry, type ToolkitOptions } from '@databricks/appkit/beta';
 import { z } from 'zod';
 import type { DbLike } from '../lib/menu';
-import { searchMenu, getActiveItem, getItemsBySkus } from '../lib/menu';
+import { searchMenu, getActiveItem, getItemsWithVariants } from '../lib/menu';
 import type { EmbeddingsInvoker } from '../lib/embed';
 
 interface StoreRow {
@@ -205,8 +205,11 @@ export const barista = createAgent({
         }),
         annotations: { effect: 'read' },
         execute: async ({ store_id, skus }) => {
-          const items = await getItemsBySkus(db, store_id, skus);
-          return { type: 'recommend_items', items };
+          // Expand declared SKUs to all active size variants so the card
+          // shows S/M/L chips; initial_skus preserves the declared size as
+          // the pre-selected chip (e.g. an explicit "Lで" order).
+          const { items, initial_skus } = await getItemsWithVariants(db, store_id, skus);
+          return { type: 'recommend_items', items, initial_skus };
         },
       }),
 

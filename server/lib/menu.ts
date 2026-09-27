@@ -175,6 +175,61 @@ export async function getItemsBySkus(db: DbLike, storeId: string, skus: string[]
   return unique.map((sku) => bySku.get(sku)).filter((r): r is MenuRow => r != null);
 }
 
+/**
+ * Expand the declared SKUs to every active size variant of the same
+ * products (same item_key), so a chat card can offer S/M/L chips — the
+ * model declares only the representative SKU, but the user picks the size.
+ * Output order: declared products in request order, sizes sorted S/M/L/N/A
+ * within each product. `initial_skus` tells the client which SKU to
+ * pre-select per item_key (the model's declared size wins over the M
+ * default, e.g. an explicit "Lで" order).
+ */
+export async function getItemsWithVariants(
+  db: DbLike,
+  storeId: string,
+  skus: string[],
+): Promise<{ items: MenuRow[]; initial_skus: Record<string, string> }> {
+  const unique = [...new Set(skus)];
+  if (unique.length === 0) return { items: [], initial_skus: {} };
+  const { rows } = await db.query<MenuRow & { declared_sku: string }>(
+    `WITH declared AS (
+       SELECT item_key, sku
+       FROM cofee_shop.menu_items
+       WHERE store_id = $1 AND sku = ANY($2) AND active
+     )
+     SELECT DISTINCT ON (m.sku) m.sku, m.store_id, m.item_key, m.item_name, m.category, m.size,
+            m.price::text, m.currency, m.description,
+            m.image_url, m.image_photographer, m.image_photographer_url, m.image_unsplash_url,
+            m.calories_kcal, m.protein_g::text, m.fat_g::text,
+            m.contains_milk, m.contains_egg, m.contains_wheat, m.contains_nuts,
+            m.alt_milk_options, m.scenes, m.is_classic, m.is_new, m.is_seasonal, m.target_tags,
+            d.sku AS declared_sku
+     FROM cofee_shop.menu_items m
+     JOIN declared d ON d.item_key = m.item_key
+     WHERE m.store_id = $1 AND m.active
+     ORDER BY m.sku, m.size`,
+    [storeId, unique],
+  );
+  const sizeRank = (size: string) => ['S', 'M', 'L', 'N/A'].indexOf(size);
+  // Declared sku per item_key (first in request order wins).
+  const declaredSkus = new Set(unique);
+  const initial_skus: Record<string, string> = {};
+  const order: string[] = [];
+  for (const r of rows) {
+    if (declaredSkus.has(r.declared_sku) && !initial_skus[r.item_key]) {
+      initial_skus[r.item_key] = r.declared_sku;
+      order.push(r.item_key);
+    }
+  }
+  const items = order.flatMap((key) =>
+    rows
+      .filter((r) => r.item_key === key)
+      .sort((a, b) => sizeRank(a.size) - sizeRank(b.size))
+      .map(({ declared_sku: _declared, ...m }) => m),
+  );
+  return { items, initial_skus };
+}
+
 /** Look up a single SKU (must exist, belong to the store, and be active). */
 export async function getActiveItem(db: DbLike, storeId: string, sku: string): Promise<MenuRow | null> {
   const { rows } = await db.query<MenuRow>(

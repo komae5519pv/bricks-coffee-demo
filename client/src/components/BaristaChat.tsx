@@ -24,6 +24,8 @@ interface Message {
   content: string;
   toolName?: string;
   groups?: ProductGroup[];
+  /** item_key -> SKU to pre-select on the card (model-declared size). */
+  initial_skus?: Record<string, string>;
   set?: RecommendSet;
 }
 
@@ -77,8 +79,17 @@ const mdComponents = {
 };
 
 /** Compact product card inside the chat (matches the order tab's design language). */
-function ProductMiniCard({ group, onAdd }: { group: ProductGroup; onAdd: (item: MenuItem) => void }) {
-  const [sku, setSku] = useState(() => defaultSku(group));
+function ProductMiniCard({
+  group,
+  onAdd,
+  initialSku,
+}: {
+  group: ProductGroup;
+  onAdd: (item: MenuItem) => void;
+  /** Model-declared size wins over the M default (e.g. an explicit "Lで" order). */
+  initialSku?: string;
+}) {
+  const [sku, setSku] = useState(() => (initialSku && group.sizes.some((s) => s.sku === initialSku) ? initialSku : defaultSku(group)));
   const current = group.sizes.find((s) => s.sku === sku) ?? group.sizes[0];
   const repeat = (current as CardItem).order_count;
   return (
@@ -309,7 +320,11 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
       // cards right away (SKU-exact), and suppresses the fallback reconcile.
       if (toolName === 'show_recommendations' && event.item.output) {
         try {
-          const parsed = JSON.parse(event.item.output) as { type?: string; items?: MenuItem[] };
+          const parsed = JSON.parse(event.item.output) as {
+            type?: string;
+            items?: MenuItem[];
+            initial_skus?: Record<string, string>;
+          };
           if (parsed?.type === 'recommend_items' && Array.isArray(parsed.items)) {
             const valid = parsed.items.filter((r) => r && typeof r.sku === 'string');
             const groups = groupByItemKey(valid).slice(0, MAX_RECOMMENDATION_CARDS);
@@ -317,7 +332,13 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
               explicitCardsRef.current = true;
               setMessages((prev) => [
                 ...prev,
-                { id: `p-${Date.now()}-${Math.random()}`, role: 'tool-products', content: '', groups },
+                {
+                  id: `p-${Date.now()}-${Math.random()}`,
+                  role: 'tool-products',
+                  content: '',
+                  groups,
+                  initial_skus: parsed.initial_skus,
+                },
               ]);
             }
           }
@@ -550,6 +571,7 @@ export function BaristaChat({ panelOpen, onClose }: { panelOpen: boolean; onClos
                   <ProductMiniCard
                     key={g.item_key}
                     group={g}
+                    initialSku={m.initial_skus?.[g.item_key]}
                     onAdd={(item) => onAddToCart?.(item)}
                   />
                 ))}

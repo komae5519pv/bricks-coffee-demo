@@ -112,9 +112,27 @@ const q5 = await page.evaluate(() => {
   const notMentioned = names.filter((n) => n && !text.includes(n));
   const seen = new Set();
   const dupes = names.filter((n) => (seen.has(n) ? true : (seen.add(n), false)));
-  return { cards: cards.length, names, notMentioned, dupes, text: text.slice(0, 300) };
+  // size chips: any card with multiple S/M/L buttons (regression: variant
+  // grouping must survive the show_recommendations path)
+  const withChips = cards.filter((c) => {
+    const chips = [...c.querySelectorAll('button')].filter((b) => ['S', 'M', 'L'].includes(b.textContent.trim()));
+    return chips.length >= 2;
+  }).length;
+  return { cards: cards.length, names, notMentioned, dupes, withChips, text: text.slice(0, 300) };
 });
-console.log('Q5 autumn cards:', JSON.stringify({ cards: q5.cards, names: q5.names, notMentioned: q5.notMentioned, dupes: q5.dupes }));
+console.log('Q5 autumn cards:', JSON.stringify({ cards: q5.cards, names: q5.names, notMentioned: q5.notMentioned, dupes: q5.dupes, withChips: q5.withChips }));
+
+// chip interaction: switching size must update the price/kcal shown
+let chipSwitchesPrice = null;
+if (q5.withChips > 0) {
+  const chipCard = page.locator('[data-chat-product-card]').filter({ has: page.getByRole('button', { name: 'L', exact: true }) }).first();
+  const before = (await chipCard.innerText()).match(/¥[\d,]+/)?.[0] ?? '';
+  await chipCard.getByRole('button', { name: 'L', exact: true }).click();
+  await page.waitForTimeout(400);
+  const after = (await chipCard.innerText()).match(/¥[\d,]+/)?.[0] ?? '';
+  chipSwitchesPrice = before !== after && after !== '';
+  console.log('chip switch updates price:', JSON.stringify({ before, after, chipSwitchesPrice }));
+}
 console.log('Q5 answer excerpt:', q5.text.replace(/\n/g, ' | ').slice(0, 200));
 await page.screenshot({ path: OUT.replace('.png', '-autumn.png') });
 await page.screenshot({ path: OUT });
@@ -137,6 +155,8 @@ if (q5.cards === 0) failures.push('autumn recommendation produced no product car
 if (q5.cards > 6) failures.push(`too many product cards (${q5.cards} > 6)`);
 if (q5.notMentioned.length > 0) failures.push(`cards for products the answer does not recommend: ${q5.notMentioned.join(',')}`);
 if (q5.dupes.length > 0) failures.push(`duplicate product cards: ${q5.dupes.join(',')}`);
+if (q5.withChips === 0) failures.push('no product card with S/M/L size chips (variant grouping regression)');
+if (chipSwitchesPrice === false) failures.push('size chip switch did not update the price/kcal');
 if (failures.length) {
   console.error('VERIFICATION FAILED:', failures.join(' / '));
   process.exit(1);
