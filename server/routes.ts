@@ -264,23 +264,61 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
     app.get('/api/history/summary', async (req: Request, res: Response) => {
       try {
         const storeId = qstr(req.query.store_id) || null;
-        const [popular, monthly, live] = await Promise.all([
+        const [popular, monthly, hourly, category, store, live, yesterday, histAvg, inProgress] = await Promise.all([
+          // popular items by revenue (with qty for the toggle)
           spDb.query(
-            `SELECT m.item_name, SUM(h.quantity)::text AS qty, COUNT(DISTINCT h.order_id)::text AS orders
+            `SELECT m.item_name,
+                    SUM(h.quantity * m.price)::text AS revenue,
+                    SUM(h.quantity)::text AS qty,
+                    COUNT(DISTINCT h.order_id)::text AS orders
              FROM cofee_shop.historical_orders h
              JOIN cofee_shop.menu_items m ON m.sku = h.sku
              WHERE ($1::text IS NULL OR h.store_id = $1)
-             GROUP BY m.item_name ORDER BY SUM(h.quantity) DESC LIMIT 10`,
+             GROUP BY m.item_name ORDER BY SUM(h.quantity * m.price) DESC LIMIT 10`,
             [storeId],
           ),
+          // monthly revenue + orders
           spDb.query(
             `SELECT to_char(date_trunc('month', h.created_at), 'YYYY-MM') AS month,
-                    COUNT(DISTINCT h.order_id)::text AS orders, SUM(h.quantity)::text AS qty
+                    SUM(h.quantity * m.price)::text AS revenue,
+                    COUNT(DISTINCT h.order_id)::text AS orders
+             FROM cofee_shop.historical_orders h
+             JOIN cofee_shop.menu_items m ON m.sku = h.sku
+             WHERE ($1::text IS NULL OR h.store_id = $1)
+             GROUP BY 1 ORDER BY 1`,
+            [storeId],
+          ),
+          // hourly order distribution
+          spDb.query(
+            `SELECT EXTRACT(HOUR FROM h.created_at)::int AS hour,
+                    COUNT(DISTINCT h.order_id)::text AS orders
              FROM cofee_shop.historical_orders h
              WHERE ($1::text IS NULL OR h.store_id = $1)
              GROUP BY 1 ORDER BY 1`,
             [storeId],
           ),
+          // category revenue
+          spDb.query(
+            `SELECT m.category,
+                    SUM(h.quantity * m.price)::text AS revenue
+             FROM cofee_shop.historical_orders h
+             JOIN cofee_shop.menu_items m ON m.sku = h.sku
+             WHERE ($1::text IS NULL OR h.store_id = $1)
+             GROUP BY m.category ORDER BY SUM(h.quantity * m.price) DESC`,
+            [storeId],
+          ),
+          // store revenue (only meaningful for 全店舗)
+          spDb.query(
+            `SELECT h.store_id, s.store_name,
+                    SUM(h.quantity * m.price)::text AS revenue
+             FROM cofee_shop.historical_orders h
+             JOIN cofee_shop.menu_items m ON m.sku = h.sku
+             JOIN cofee_shop.stores s ON s.store_id = h.store_id
+             WHERE ($1::text IS NULL OR h.store_id = $1)
+             GROUP BY h.store_id, s.store_name ORDER BY SUM(h.quantity * m.price) DESC`,
+            [storeId],
+          ),
+          // live today
           spDb.query<{ today_orders: string; today_revenue: string; currency: string }>(
             `SELECT COUNT(*)::text AS today_orders, COALESCE(SUM(total_price), 0)::text AS today_revenue, currency
              FROM cofee_shop.orders
@@ -289,13 +327,59 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
              GROUP BY currency LIMIT 1`,
             [storeId],
           ),
+          // yesterday final (live orders)
+          spDb.query<{ revenue: string; orders: string }>(
+            `SELECT COALESCE(SUM(total_price), 0)::text AS revenue, COUNT(*)::text AS orders
+             FROM cofee_shop.orders
+             WHERE created_at::date = CURRENT_DATE - INTERVAL '1 day' AND status <> 'cancelled'
+               AND ($1::text IS NULL OR store_id = $1)`,
+            [storeId],
+          ),
+          // historical daily averages (same store scope)
+          spDb.query<{ avg_revenue: string; avg_orders: string; avg_order_value: string }>(
+            `SELECT COALESCE(AVG(daily_revenue), 0)::text AS avg_revenue,
+                    COALESCE(AVG(daily_orders), 0)::text AS avg_orders,
+                    COALESCE(SUM(daily_revenue) / NULLIF(SUM(daily_orders), 0), 0)::text AS avg_order_value
+             FROM (
+               SELECT created_at::date AS day,
+                      SUM(h.quantity * m.price) AS daily_revenue,
+                      COUNT(DISTINCT h.order_id) AS daily_orders
+               FROM cofee_shop.historical_orders h
+               JOIN cofee_shop.menu_items m ON m.sku = h.sku
+               WHERE ($1::text IS NULL OR h.store_id = $1)
+               GROUP BY created_at::date
+             ) d`,
+            [storeId],
+          ),
+          // in-progress counts
+          spDb.query<{ received: string; preparing: string; ready: string }>(
+            `SELECT COUNT(*) FILTER (WHERE status = 'received')::text AS received,
+                    COUNT(*) FILTER (WHERE status = 'preparing')::text AS preparing,
+                    COUNT(*) FILTER (WHERE status = 'ready')::text AS ready
+             FROM cofee_shop.orders
+             WHERE created_at::date = CURRENT_DATE AND status <> 'cancelled'
+               AND ($1::text IS NULL OR store_id = $1)`,
+            [storeId],
+          ),
         ]);
+        const todayRevenue = Number(live.rows[0]?.today_revenue ?? 0);
+        const todayOrders = Number(live.rows[0]?.today_orders ?? 0);
         res.json({
           popular: popular.rows,
           monthly: monthly.rows,
+          hourly: hourly.rows,
+          category: category.rows,
+          store: store.rows,
           today_orders: live.rows[0]?.today_orders ?? '0',
           today_revenue: live.rows[0]?.today_revenue ?? '0',
           today_currency: live.rows[0]?.currency ?? null,
+          avg_order_value: todayOrders > 0 ? String(Math.round(todayRevenue / todayOrders)) : '0',
+          in_progress: inProgress.rows[0] ?? { received: '0', preparing: '0', ready: '0' },
+          yesterday_revenue: yesterday.rows[0]?.revenue ?? '0',
+          yesterday_orders: yesterday.rows[0]?.orders ?? '0',
+          hist_avg_daily_revenue: histAvg.rows[0]?.avg_revenue ?? '0',
+          hist_avg_daily_orders: histAvg.rows[0]?.avg_orders ?? '0',
+          hist_avg_order_value: histAvg.rows[0]?.avg_order_value ?? '0',
         });
       } catch (e) {
         res.status(500).json({ error: String(e) });

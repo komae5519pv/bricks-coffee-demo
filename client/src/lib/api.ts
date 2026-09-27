@@ -112,11 +112,21 @@ export interface OrderEvent {
 }
 
 export interface HistorySummary {
-  popular: { item_name: string; qty: string; orders: string }[];
-  monthly: { month: string; orders: string; qty: string }[];
+  popular: { item_name: string; revenue: string; qty: string; orders: string }[];
+  monthly: { month: string; revenue: string; orders: string }[];
+  hourly: { hour: number; orders: string }[];
+  category: { category: string; revenue: string }[];
+  store: { store_id: string; store_name: string; revenue: string }[];
   today_orders: string;
   today_revenue: string;
   today_currency: string | null;
+  avg_order_value: string;
+  in_progress: { received: string; preparing: string; ready: string };
+  yesterday_revenue: string;
+  hist_avg_daily_revenue: string;
+  yesterday_orders: string;
+  hist_avg_daily_orders: string;
+  hist_avg_order_value: string;
 }
 
 export interface Preference {
