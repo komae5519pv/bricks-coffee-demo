@@ -7,8 +7,11 @@ import { Plus, Minus, RotateCcw } from 'lucide-react';
 import { fmtPrice } from '../../lib/api';
 import { TooltipCard, SourceBadge } from './chart-parts';
 
-// world-atlas topojson (110m, lightweight) — vendored like every other dep
-import worldData from 'world-atlas/countries-110m.json';
+// world-atlas topojson — 50m base (smooth coastlines when zoomed) plus a
+// 10m high-detail overlay for just the 7 store countries (extracted by
+// tools/extract_store_countries.mjs; full 10m is ~3.7MB — too heavy).
+import worldData50m from 'world-atlas/countries-50m.json';
+import storeCountries10m from '../../assets/countries-10m-stores.json';
 
 interface StoreGeo {
   store_id: string;
@@ -40,6 +43,64 @@ function ringToPath(ring: number[][]): string {
   );
 }
 
+interface TopologyLike {
+  arcs: number[][][];
+  transform: { scale: number[]; translate: number[] };
+  objects: {
+    countries: {
+      geometries: ({
+        type: string;
+        arcs: number[][] | number[][][];
+        properties: { name: string };
+      })[];
+    };
+  };
+}
+
+/** TopoJSON -> SVG path strings. Arcs are delta-encoded quantized integers
+ * with a transform; decode: cumulative sum, then scale+translate. Works for
+ * every world-atlas resolution (110m/50m/10m). */
+function decodeCountries(topology: TopologyLike): { name: string; d: string }[] {
+  const scale = topology.transform.scale;
+  const translate = topology.transform.translate;
+  const arc = (idx: number): [number, number][] => {
+    const raw = topology.arcs[idx < 0 ? ~idx : idx];
+    const pts: [number, number][] = [];
+    let x = 0;
+    let y = 0;
+    for (const [dx, dy] of raw) {
+      x += dx;
+      y += dy;
+      pts.push([x * scale[0] + translate[0], y * scale[1] + translate[1]]);
+    }
+    return idx < 0 ? pts.reverse() : pts;
+  };
+  const out: { name: string; d: string }[] = [];
+  for (const g of topology.objects.countries.geometries) {
+    if (g.type === 'Polygon') {
+      const rings = (g.arcs as number[][]).map((ring) => ring.flatMap(arc));
+      out.push({ name: g.properties.name, d: rings.map(ringToPath).join(' ') });
+    } else if (g.type === 'MultiPolygon') {
+      const polys = (g.arcs as number[][][]).map((poly) => poly.map((ring) => ring.flatMap(arc)));
+      out.push({ name: g.properties.name, d: polys.map((rings) => rings.map(ringToPath).join(' ')).join(' ') });
+    }
+  }
+  return out.filter((p) => p.d);
+}
+
+// decoded once at module load — topology data is static. Point counts are
+// exposed on the SVG for verification (data-map-base-points / -overlay-points).
+const basePaths = decodeCountries(worldData50m);
+const overlayPaths = decodeCountries(storeCountries10m);
+const basePointCount = basePaths.reduce((n, p) => n + p.d.split(' ').length, 0);
+const overlayPointCount = overlayPaths.reduce((n, p) => n + p.d.split(' ').length, 0);
+
+// zoom-dependent store labels: shown only at k >= LABEL_MIN_K (screen-fixed
+// font size like the bubble radius). Colliding city pairs offset to opposite
+// sides (TYO002 渋谷 west of 東京駅前, NYC002 Brooklyn south-west of Midtown).
+const LABEL_MIN_K = 2.5;
+const LABEL_SIDE: Record<string, 'left' | 'right'> = { TYO002: 'left', NYC002: 'left' };
+
 interface ZoomState {
   x: number;
   y: number;
@@ -70,37 +131,6 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
 
   useEffect(() => {
     hoverCapable.current = window.matchMedia('(hover: hover)').matches;
-  }, []);
-
-  const countryPaths = useMemo(() => {
-    // TopoJSON arcs are delta-encoded quantized integers with a transform;
-    // decode: cumulative sum, then scale+translate.
-    const topology = worldData;
-    const scale = topology.transform.scale;
-    const translate = topology.transform.translate;
-    const arc = (idx: number): [number, number][] => {
-      const raw = topology.arcs[idx < 0 ? ~idx : idx];
-      const pts: [number, number][] = [];
-      let x = 0;
-      let y = 0;
-      for (const [dx, dy] of raw) {
-        x += dx;
-        y += dy;
-        pts.push([x * scale[0] + translate[0], y * scale[1] + translate[1]]);
-      }
-      return idx < 0 ? pts.reverse() : pts;
-    };
-    const paths: string[] = [];
-    for (const g of topology.objects.countries.geometries) {
-      if (g.type === 'Polygon') {
-        const rings = (g.arcs as number[][]).map((ring) => ring.flatMap(arc));
-        paths.push(rings.map(ringToPath).join(' '));
-      } else if (g.type === 'MultiPolygon') {
-        const polys = (g.arcs as number[][][]).map((poly) => poly.map((ring) => ring.flatMap(arc)));
-        paths.push(polys.map((rings) => rings.map(ringToPath).join(' ')).join(' '));
-      }
-    }
-    return paths.filter(Boolean);
   }, []);
 
   const stores = useMemo(
@@ -216,6 +246,10 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
             className="w-full cursor-grab active:cursor-grabbing"
             style={{ touchAction: 'none' }}
             aria-label="世界地図"
+            data-map-base-paths={basePaths.length}
+            data-map-overlay-paths={overlayPaths.length}
+            data-map-base-points={basePointCount}
+            data-map-overlay-points={overlayPointCount}
             // background click/tap (land or ocean, not a bubble — bubbles
             // stopPropagation) dismisses a pinned tooltip
             onClick={() => setPinnedTip(null)}
@@ -223,13 +257,26 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
             {/* d3 owns this transform during gestures; React only sets the
                 initial identity and re-syncs at zoom end via zoomState */}
             <g ref={gRef} transform={`translate(${zoomState.x},${zoomState.y}) scale(${zoomState.k})`}>
-              {countryPaths.map((d) => (
+              {/* 50m base: every country, smooth coastlines when zoomed */}
+              {basePaths.map((p) => (
                 <path
-                  key={d.slice(0, 60)}
-                  d={d}
+                  key={`b-${p.name}`}
+                  d={p.d}
                   fill="var(--chart-land)"
                   stroke="var(--chart-land-stroke)"
                   strokeWidth={0.5 / zoomState.k}
+                />
+              ))}
+              {/* 10m high-detail overlay: the 7 store countries only. Same
+                  fill (indistinguishable at k=1), stronger border so country
+                  edges read at high zoom. */}
+              {overlayPaths.map((p) => (
+                <path
+                  key={`o-${p.name}`}
+                  d={p.d}
+                  fill="var(--chart-land)"
+                  stroke="var(--chart-land-stroke)"
+                  strokeWidth={0.9 / zoomState.k}
                 />
               ))}
               {stores.map((s) => {
@@ -277,6 +324,35 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
                   </g>
                 );
               })}
+              {/* store name labels: only at k >= LABEL_MIN_K (the calm k=1
+                  view stays label-free), fading in via .map-labels (300ms,
+                  reduced-motion aware). Font size scales with 1/k so labels
+                  stay screen-fixed like the bubbles. */}
+              <g className="map-labels" opacity={zoomState.k >= LABEL_MIN_K ? 1 : 0} pointerEvents="none" aria-hidden={zoomState.k < LABEL_MIN_K}>
+                {stores.map((s) => {
+                  const p = px(s.lon, s.lat);
+                  const base = 4 + Math.sqrt(s.revenueNum / maxRevenue) * 14;
+                  const side = LABEL_SIDE[s.store_id] ?? 'right';
+                  const fontSize = 10 / zoomState.k;
+                  return (
+                    <text
+                      key={`label-${s.store_id}`}
+                      data-store-label={s.store_id}
+                      x={side === 'right' ? p.x + base / zoomState.k + 3 / zoomState.k : p.x - base / zoomState.k - 3 / zoomState.k}
+                      y={p.y}
+                      fontSize={fontSize}
+                      textAnchor={side === 'right' ? 'start' : 'end'}
+                      dominantBaseline="central"
+                      fill="var(--foreground)"
+                      stroke="var(--background)"
+                      strokeWidth={fontSize * 0.3}
+                      paintOrder="stroke"
+                    >
+                      {s.store_name}
+                    </text>
+                  );
+                })}
+              </g>
             </g>
           </svg>
           {activeTip && tipStore && (

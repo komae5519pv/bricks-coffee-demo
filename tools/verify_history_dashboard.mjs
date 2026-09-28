@@ -162,6 +162,12 @@ const mapCheck = await page.evaluate(() => {
     landDistinct: landFill != null && landFill !== bgFill,
     tokyoX,
     tokyoEastOfCenter: tokyoX != null && tokyoX > 360,
+    basePaths: Number(svg.getAttribute('data-map-base-paths')),
+    overlayPaths: Number(svg.getAttribute('data-map-overlay-paths')),
+    basePoints: Number(svg.getAttribute('data-map-base-points')),
+    overlayPoints: Number(svg.getAttribute('data-map-overlay-points')),
+    labelCount: svg.querySelectorAll('[data-store-label]').length,
+    labelOpacity: svg.querySelector('.map-labels')?.getAttribute('opacity'),
   };
 });
 console.log('map structure:', JSON.stringify(mapCheck));
@@ -170,6 +176,15 @@ else {
   if (mapCheck.landPathCount < 100) failures.push(`land paths too few (${mapCheck.landPathCount} — want 100+ country polygons)`);
   if (!mapCheck.landDistinct) failures.push(`land fill matches background (${mapCheck.landFill})`);
   if (mapCheck.tokyoX != null && !mapCheck.tokyoEastOfCenter) failures.push(`Tokyo bubble misplaced (cx=${mapCheck.tokyoX}, want >360 = east hemisphere)`);
+  // 50m base (241 countries) + 10m overlay (7 store countries) with far
+  // more detail than the old 110m (~2K points)
+  if (mapCheck.basePaths !== 241) failures.push(`base paths != 241 (${mapCheck.basePaths} — 50m expected)`);
+  if (mapCheck.overlayPaths !== 7) failures.push(`overlay paths != 7 (${mapCheck.overlayPaths} — store countries expected)`);
+  if (mapCheck.basePoints < 20000) failures.push(`50m detail too low (${mapCheck.basePoints} points)`);
+  if (mapCheck.overlayPoints < 20000) failures.push(`10m overlay detail too low (${mapCheck.overlayPoints} points)`);
+  // labels exist in the DOM but stay hidden at k=1
+  if (mapCheck.labelCount !== 12) failures.push(`store labels != 12 (${mapCheck.labelCount})`);
+  if (mapCheck.labelOpacity !== '0') failures.push(`labels visible at k=1 (opacity=${mapCheck.labelOpacity})`);
 }
 await page.screenshot({ path: '/tmp/history-v3-map-check.png', clip: { x: 0, y: 600, width: 720, height: 500 } });
 
@@ -208,6 +223,31 @@ const zoomAfter = await page.evaluate(() => {
 console.log('zoom after click:', JSON.stringify(zoomAfter));
 if (zoomAfter.scale <= zoomCheck.scale) failures.push(`zoom-in did not increase scale (${zoomCheck.scale} -> ${zoomAfter.scale})`);
 
+// zoom to k >= 2.5: store labels fade in (hidden at k=1, checked above)
+await page.getByRole('button', { name: '拡大' }).click();
+await page.waitForTimeout(400);
+await page.getByRole('button', { name: '拡大' }).click();
+await page.waitForTimeout(600);
+const labelCheck = await page.evaluate(() => {
+  const g = document.querySelector('svg[aria-label="世界地図"] g');
+  const t = g?.getAttribute('transform') ?? '';
+  const k = Number(t.match(/scale\(([^)]+)\)/)?.[1] ?? 1);
+  const labels = document.querySelector('.map-labels');
+  return {
+    k,
+    opacity: labels?.getAttribute('opacity'),
+    visible: labels ? getComputedStyle(labels).opacity : null,
+    tokyoLabel: [...document.querySelectorAll('[data-store-label]')].map((l) => l.textContent).slice(0, 3),
+  };
+});
+console.log('label check at high zoom:', JSON.stringify(labelCheck));
+if (labelCheck.k < 2.5) failures.push(`zoom level too low for label test (k=${labelCheck.k.toFixed(2)})`);
+if (labelCheck.opacity !== '1') failures.push(`labels not visible at k=${labelCheck.k.toFixed(2)} (opacity=${labelCheck.opacity})`);
+if (labelCheck.visible !== '1') failures.push(`label fade not applied (computed opacity=${labelCheck.visible})`);
+await page.screenshot({ path: '/tmp/map-labels-zoomed.png' });
+await page.getByRole('button', { name: 'リセット' }).click();
+await page.waitForTimeout(500);
+
 // pan, then zoom via button: pan position must be preserved (review #1)
 await page.mouse.move(400, 400);
 await page.mouse.down();
@@ -245,7 +285,11 @@ await page.waitForTimeout(600);
 const mapCardText = await page.evaluate(() => {
   const h3 = [...document.querySelectorAll('h3')].find((e) => e.textContent.includes('店舗別売上（世界）'));
   const card = h3?.closest('[data-slot="card"], .rounded-2xl');
-  return { text: card?.textContent ?? '', bubbleCount: document.querySelectorAll('[data-store-bubble]').length };
+  // legend check must EXCLUDE the svg subtree — store labels legitimately
+  // live inside it as <text> elements (they are not the removed legend list)
+  const clone = card?.cloneNode(true);
+  clone?.querySelectorAll('svg').forEach((s) => s.remove());
+  return { text: clone?.textContent ?? '', bubbleCount: document.querySelectorAll('[data-store-bubble]').length };
 });
 console.log('map card bubbles:', mapCardText.bubbleCount);
 if (mapCardText.bubbleCount !== 12) failures.push(`map bubbles != 12 (${mapCardText.bubbleCount})`);

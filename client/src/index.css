@@ -162,3 +162,9 @@
 @media (prefers-reduced-motion: no-preference) {
   .animate-ping-slow { animation: ping-slow 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
 }
+
+/* Map zoom labels: fade in/out on zoom-level change (300ms, ease-out;
+ * reduced-motion: instant). */
+@media (prefers-reduced-motion: no-preference) {
+  .map-labels { transition: opacity 250ms ease-out; }
+}
