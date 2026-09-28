@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { fmtPrice } from '../../lib/api';
-import { ChartTooltipCard, SourceBadge } from './chart-parts';
+import { TooltipCard, SourceBadge } from './chart-parts';
 
 /** Monthly revenue trend: area with transparent gradient fill; the live
  * current month renders as an accent dot + segment (B1's is_live data). */
@@ -80,7 +80,21 @@ export function TrendChart({ data }: { data: import('../../lib/api').HistorySumm
                 tickFormatter={(v: number) => (metric === 'revenue' ? fmtPrice(v, 'JPY') : String(v))}
                 width={70}
               />
-              <Tooltip content={<ChartTooltipCard fmt={fmt} />} cursor={{ stroke: 'var(--chart-track)', strokeWidth: 1 }} />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.[0]) return null;
+                  const p = payload[0].payload as { month: string; revenue: number; orders: number; is_live: boolean };
+                  return (
+                    <TooltipCard
+                      title={`${label}${p.is_live ? ' (ライブ/Lakebase)' : ''}`}
+                      rows={[
+                        { label: metric === 'revenue' ? '売上' : '注文数', value: fmt(Number(payload[0].value)), color: p.is_live ? 'var(--chart-accent)' : 'var(--chart-primary)' },
+                      ]}
+                    />
+                  );
+                }}
+                cursor={{ stroke: 'var(--chart-track)', strokeWidth: 1 }}
+              />
               <Area isAnimationActive={false}
                 type="monotone"
                 dataKey={metric}

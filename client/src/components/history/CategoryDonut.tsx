@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Card, CardContent } from '@databricks/appkit-ui/react';
 import { PieChart, Pie, Tooltip, ResponsiveContainer } from 'recharts';
 import { fmtPrice } from '../../lib/api';
-import { ChartTooltipCard, SourceBadge } from './chart-parts';
+import { TooltipCard, SourceBadge } from './chart-parts';
 
 const DONUT_COLORS = [
   'var(--chart-cat-1)',
@@ -49,7 +49,21 @@ export function CategoryDonut({ data }: { data: import('../../lib/api').HistoryS
                 paddingAngle={1}
                 cornerRadius={4}
               />
-              <Tooltip content={<ChartTooltipCard fmt={(v) => fmtPrice(v, 'JPY')} />} />
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.[0]) return null;
+                  const p = payload[0].payload as { name: string; value: number; fill: string };
+                  return (
+                    <TooltipCard
+                      title={p.name}
+                      rows={[
+                        { label: '売上', value: fmtPrice(p.value, 'JPY'), color: p.fill },
+                        { label: '構成比', value: total > 0 ? `${((p.value / total) * 100).toFixed(1)}%` : '-' },
+                      ]}
+                    />
+                  );
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">

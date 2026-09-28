@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Card, CardContent } from '@databricks/appkit-ui/react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { fmtPrice } from '../../lib/api';
-import { SourceBadge } from './chart-parts';
+import { TooltipCard, SourceBadge } from './chart-parts';
 
 const QUADRANT_COLORS = ['var(--chart-cat-1)', 'var(--chart-cat-2)', 'var(--chart-cat-3)', 'var(--chart-cat-4)'];
 
@@ -79,27 +79,15 @@ export function MenuBubble({ data }: { data: import('../../lib/api').HistorySumm
                   if (!active || !payload?.[0]) return null;
                   const p = payload[0].payload as { item: string; qty: number; price: number; revenue: number; quadrant: number };
                   return (
-                    <div className="rounded-md border bg-background px-3 py-2 text-sm shadow-md">
-                      <div className="text-xs text-muted-foreground">{p.item}</div>
-                      <div className="mt-0.5 space-y-0.5 text-xs">
-                        <div className="flex justify-between gap-4">
-                          <span>販売数量</span>
-                          <span className="font-semibold tabular-nums">{p.qty}点</span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span>平均単価</span>
-                          <span className="font-semibold tabular-nums">{fmtPrice(p.price, 'JPY')}</span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span>売上高</span>
-                          <span className="font-semibold tabular-nums">{fmtPrice(p.revenue, 'JPY')}</span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span>象限</span>
-                          <span className="font-semibold">{quadrantLabels[p.quadrant]}</span>
-                        </div>
-                      </div>
-                    </div>
+                    <TooltipCard
+                      title={p.item}
+                      rows={[
+                        { label: '販売数量', value: `${p.qty}点`, color: QUADRANT_COLORS[p.quadrant] },
+                        { label: '平均単価', value: fmtPrice(p.price, 'JPY') },
+                        { label: '売上高', value: fmtPrice(p.revenue, 'JPY') },
+                        { label: '象限', value: quadrantLabels[p.quadrant] },
+                      ]}
+                    />
                   );
                 }}
               />

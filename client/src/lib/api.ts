@@ -130,7 +130,7 @@ export interface HistorySummary {
   daily: { day: string; revenue: string; orders: string }[];
   bubble: { item_name: string; qty: string; avg_price: string; revenue: string; category: string }[];
   heatmap: { dow: number; hour: number; orders: string }[];
-  store_geo: { store_id: string; store_name: string; country: string; lat: string; lon: string; revenue: string }[];
+  store_geo: { store_id: string; store_name: string; country: string; lat: string; lon: string; revenue: string; orders: string }[];
 }
 
 export interface Preference {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent } from '@databricks/appkit-ui/react';
-import { SourceBadge } from './chart-parts';
+import { TooltipCard, SourceBadge } from './chart-parts';
 
 const DAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 7-19
@@ -53,8 +53,8 @@ export function WeekdayHeatmap({ data }: { data: import('../../lib/api').History
                       onMouseLeave={() => setHover(null)}
                     >
                       {hover?.dow === dow && hover?.hour === HOURS[hourIdx] && (
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-20 rounded-md border bg-background px-2 py-1 text-xs shadow-md whitespace-nowrap">
-                          {DAYS[dow]}曜 {HOURS[hourIdx]}時: {orders}件
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap">
+                          <TooltipCard title={`${DAYS[dow]}曜 ${HOURS[hourIdx]}時 (UTC)`} rows={[{ label: '注文数', value: `${orders}件` }]} />
                         </div>
                       )}
                     </div>

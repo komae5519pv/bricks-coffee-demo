@@ -416,7 +416,8 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           // only highlights, doesn't filter the map)
           spDb.query(
             `SELECT s.store_id, s.store_name, s.country, s.lat::text, s.lon::text,
-                    COALESCE(SUM(h.quantity * m.price), 0)::text AS revenue
+                    COALESCE(SUM(h.quantity * m.price), 0)::text AS revenue,
+                    COUNT(DISTINCT h.order_id)::text AS orders
              FROM cofee_shop.stores s
              LEFT JOIN cofee_shop.historical_orders h ON h.store_id = s.store_id
              LEFT JOIN cofee_shop.menu_items m ON m.sku = h.sku

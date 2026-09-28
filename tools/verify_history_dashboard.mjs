@@ -151,11 +151,7 @@ const mapCheck = await page.evaluate(() => {
   const bgFill = getComputedStyle(document.body).backgroundColor;
   const landFill = landPaths.length > 0 ? getComputedStyle(landPaths[0]).fill : null;
   // store bubbles sit on the map: Tokyo's bubble cx should be east of center
-  const bubbles = [...svg.querySelectorAll('circle')];
-  const tokyo = bubbles.find((c) => {
-    const title = c.parentElement?.querySelector('title')?.textContent ?? '';
-    return title.includes('東京') || title.includes('TYO');
-  });
+  const tokyo = svg.querySelector('[data-store-bubble="TYO001"]');
   const tokyoX = tokyo ? Number(tokyo.getAttribute('cx')) : null;
   return {
     hasSvg: true,
@@ -244,6 +240,132 @@ if (panBefore && panAfter) {
 
 await page.getByRole('button', { name: 'リセット' }).click();
 await page.waitForTimeout(600);
+
+// ---------- 1c. map: legend removed, bubble hover/tap tooltip, drag conflict ----------
+const mapCardText = await page.evaluate(() => {
+  const h3 = [...document.querySelectorAll('h3')].find((e) => e.textContent.includes('店舗別売上（世界）'));
+  const card = h3?.closest('[data-slot="card"], .rounded-2xl');
+  return { text: card?.textContent ?? '', bubbleCount: document.querySelectorAll('[data-store-bubble]').length };
+});
+console.log('map card bubbles:', mapCardText.bubbleCount);
+if (mapCardText.bubbleCount !== 12) failures.push(`map bubbles != 12 (${mapCardText.bubbleCount})`);
+// legend removed: no store names listed below the map (東京駅前店 etc.)
+for (const name of ['東京駅前店', 'Circular Quay', 'Mitte']) {
+  if (mapCardText.text.includes(name)) failures.push(`map legend still present (contains ${name})`);
+}
+
+// hover a bubble -> shared TooltipCard with store details
+const bubble = page.locator('[data-store-bubble]').first();
+await bubble.hover();
+await page.waitForTimeout(400);
+let mapTip = await page.evaluate(() => {
+  const tip = document.querySelector('[data-map-tooltip]');
+  return tip ? tip.textContent : null;
+});
+console.log('map hover tooltip:', mapTip?.slice(0, 80));
+if (!mapTip) failures.push('map hover tooltip did not appear');
+else {
+  if (!/売上/.test(mapTip)) failures.push('map tooltip lacks 売上');
+  if (!/注文数/.test(mapTip)) failures.push('map tooltip lacks 注文数');
+}
+await page.screenshot({ path: '/tmp/map-tooltip.png' });
+await page.mouse.move(60, 60); // off the bubble
+await page.waitForTimeout(400);
+mapTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+if (mapTip) failures.push('map tooltip did not dismiss on mouse leave');
+
+// tap (click) pins the tooltip; pan gesture clears it (drag conflict)
+await bubble.click();
+await page.waitForTimeout(400);
+mapTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+if (!mapTip) failures.push('map tap tooltip did not pin');
+// drag from the SVG's own center (deterministic — earlier fixed coords could
+// land off-map after Playwright's auto-scroll)
+const mapSvgBox = await page.locator('svg[aria-label="世界地図"]').boundingBox();
+if (!mapSvgBox) {
+  failures.push('map svg box not found for drag test');
+} else {
+  const cx = mapSvgBox.x + mapSvgBox.width / 2;
+  const cy = mapSvgBox.y + mapSvgBox.height / 2;
+  await page.mouse.move(cx - 100, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 100, cy + 50, { steps: 8 });
+  // DURING the drag the pinned tooltip must be gone (zoom 'start' clears it)
+  mapTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+  console.log('map tooltip during drag:', mapTip);
+  if (mapTip) failures.push('map tooltip survived drag start (drag conflict)');
+  await page.mouse.up();
+  await page.mouse.move(mapSvgBox.x + 5, mapSvgBox.y + mapSvgBox.height + 60); // off-map neutral spot
+  await page.waitForTimeout(400);
+  mapTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+  if (mapTip) failures.push('map tooltip reappeared after drag + mouse-out');
+}
+await page.getByRole('button', { name: 'リセット' }).click();
+await page.waitForTimeout(500);
+
+// ---------- 1d. unified tooltips elsewhere + wording ----------
+// KPI sparkline hover
+await page.locator('[data-kpi-tile]').first().locator('svg').last().hover({ position: { x: 60, y: 18 } });
+await page.waitForTimeout(400);
+const sparkTip = await page.evaluate(() => document.querySelector('[data-tooltip-card]')?.textContent ?? null);
+console.log('sparkline tooltip:', sparkTip?.slice(0, 60));
+if (!sparkTip) failures.push('KPI sparkline tooltip did not appear');
+await page.mouse.move(20, 60);
+
+// heatmap cell hover
+await page.locator('text=曜日×時間帯の注文分布').scrollIntoViewIfNeeded();
+const heatCell = page.locator('.aspect-square').nth(10);
+await heatCell.hover();
+await page.waitForTimeout(400);
+const heatTip = await page.evaluate(() => document.querySelector('[data-tooltip-card]')?.textContent ?? null);
+console.log('heatmap tooltip:', heatTip?.slice(0, 60));
+if (!heatTip || !/件/.test(heatTip)) failures.push('heatmap tooltip missing order count');
+await page.mouse.move(60, 60);
+
+// donut hover (recharts path -> shared TooltipCard): hover ON THE RING
+// (center + radius offset — center is the donut hole, not a sector)
+await page.locator('text=カテゴリ別売上構成').scrollIntoViewIfNeeded();
+const donutWrapper = page.locator('text=カテゴリ別売上構成').locator('..').locator('..').locator('.recharts-wrapper').first();
+const donutBox = await donutWrapper.boundingBox();
+if (!donutBox) {
+  failures.push('donut wrapper box not found');
+} else {
+  await donutWrapper.hover({ position: { x: donutBox.width / 2 + 75, y: donutBox.height / 2 } });
+  await page.waitForTimeout(500);
+  const donutTip = await page.evaluate(() => document.querySelector('[data-tooltip-card]')?.textContent ?? null);
+  console.log('donut tooltip:', donutTip?.slice(0, 60));
+  if (!donutTip || !/構成比/.test(donutTip)) failures.push('donut tooltip missing 構成比');
+  await page.screenshot({ path: '/tmp/donut-tooltip.png' });
+}
+await page.mouse.move(60, 60);
+
+// trend chart hover (recharts path)
+await page.locator('text=月別売上トレンド').scrollIntoViewIfNeeded();
+await page.locator('.recharts-wrapper').first().hover({ position: { x: 300, y: 120 } });
+await page.waitForTimeout(400);
+const trendTip = await page.evaluate(() => document.querySelector('[data-tooltip-card]')?.textContent ?? null);
+console.log('trend tooltip:', trendTip?.slice(0, 60));
+if (!trendTip) failures.push('trend tooltip did not appear');
+await page.mouse.move(60, 60);
+
+// ranking bar hover
+const rankBar = page.locator('text=店舗別売上ランキング').locator('..').locator('..').locator('div.space-y-0\\.5').first();
+await rankBar.hover();
+await page.waitForTimeout(400);
+const rankTip = await page.evaluate(() => document.querySelector('[data-tooltip-card]')?.textContent ?? null);
+console.log('ranking tooltip:', rankTip?.slice(0, 60));
+if (!rankTip || !/構成比/.test(rankTip)) failures.push('ranking tooltip missing 構成比');
+await page.mouse.move(60, 60);
+
+// wording: 過去の日次平均 everywhere, old misnomer gone
+const wording = await page.evaluate(() => ({
+  hasNew: document.body.innerText.includes('過去の日次平均'),
+  hasOld: document.body.innerText.includes('過去データ同日平均') || document.body.innerText.includes('過去データ平均'),
+}));
+console.log('wording:', JSON.stringify(wording));
+if (!wording.hasNew) failures.push('新表記「過去の日次平均」が見つからない');
+if (wording.hasOld) failures.push('旧表記「過去データ(同日)平均」が残っている');
+await page.screenshot({ path: '/tmp/history-tooltips.png', fullPage: false });
 
 // ---------- 1. v3 structure ----------
 const structure = await page.evaluate(() => {

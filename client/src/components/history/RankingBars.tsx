@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent, Button } from '@databricks/appkit-ui/react';
 import { fmtPrice } from '../../lib/api';
-import { SourceBadge } from './chart-parts';
+import { TooltipCard, SourceBadge, type TooltipRow } from './chart-parts';
 
 function RankBar({
   rank,
@@ -10,6 +10,8 @@ function RankBar({
   max,
   accent,
   sub,
+  tooltipRows,
+  tooltipTitle,
 }: {
   rank: number;
   name: string;
@@ -17,9 +19,16 @@ function RankBar({
   max: number;
   accent?: boolean;
   sub?: string;
+  tooltipRows?: TooltipRow[];
+  tooltipTitle?: string;
 }) {
+  const [hover, setHover] = useState(false);
   return (
-    <div className="space-y-0.5">
+    <div
+      className="relative space-y-0.5"
+      onMouseEnter={() => tooltipRows && setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
       <div className="flex items-baseline gap-2 text-xs">
         <span className="w-5 text-muted-foreground tabular-nums shrink-0">{rank}</span>
         <span className={`min-w-0 truncate ${accent ? 'font-semibold' : ''}`}>{name}</span>
@@ -35,6 +44,11 @@ function RankBar({
           }}
         />
       </div>
+      {hover && tooltipRows && (
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap">
+          <TooltipCard title={tooltipTitle ?? name} rows={tooltipRows} />
+        </div>
+      )}
     </div>
   );
 }
@@ -46,6 +60,7 @@ export function RankingBars({ data, storeId }: { data: import('../../lib/api').H
   const storeData = useMemo(
     () =>
       (data?.store ?? []).map((s) => ({
+        store_id: s.store_id,
         store: `${s.store_name} (${s.store_id})`,
         revenue: Number(s.revenue),
         isSelected: storeId !== '' && s.store_id === storeId,
@@ -53,6 +68,7 @@ export function RankingBars({ data, storeId }: { data: import('../../lib/api').H
     [data, storeId],
   );
   const maxStore = Math.max(1, ...storeData.map((s) => s.revenue));
+  const totalStoreRevenue = storeData.reduce((sum, x) => sum + x.revenue, 0);
 
   const popularData = useMemo(() => {
     const rows = (data?.popular ?? []).map((p) => ({
@@ -73,16 +89,24 @@ export function RankingBars({ data, storeId }: { data: import('../../lib/api').H
             <SourceBadge live={false} />
           </div>
           <div className="space-y-2">
-            {storeData.map((s, i) => (
-              <RankBar
-                key={s.store}
-                rank={i + 1}
-                name={s.store}
-                value={s.revenue}
-                max={maxStore}
-                accent={s.isSelected}
-              />
-            ))}
+            {storeData.map((s, i) => {
+              const geo = data.store_geo?.find((g) => g.store_id === s.store_id);
+              return (
+                <RankBar
+                  key={s.store}
+                  rank={i + 1}
+                  name={s.store}
+                  value={s.revenue}
+                  max={maxStore}
+                  accent={s.isSelected}
+                  tooltipRows={[
+                    { label: '売上', value: fmtPrice(s.revenue, 'JPY') },
+                    ...(geo ? [{ label: '注文数', value: `${Number(geo.orders).toLocaleString()}件` }] : []),
+                    { label: '構成比', value: totalStoreRevenue > 0 ? `${((s.revenue / totalStoreRevenue) * 100).toFixed(1)}%` : '-' },
+                  ]}
+                />
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -120,6 +144,10 @@ export function RankingBars({ data, storeId }: { data: import('../../lib/api').H
                 value={popularMetric === 'revenue' ? p.revenue : p.qty}
                 max={maxPopular}
                 sub={popularMetric === 'revenue' ? `${p.qty}点` : fmtPrice(p.revenue, 'JPY')}
+                tooltipRows={[
+                  { label: '売上', value: fmtPrice(p.revenue, 'JPY') },
+                  { label: '点数', value: `${p.qty}点` },
+                ]}
               />
             ))}
           </div>

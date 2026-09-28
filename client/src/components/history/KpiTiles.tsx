@@ -27,11 +27,7 @@ function DeltaBadge({ delta, title }: { delta: Delta | null; title: string }) {
       data-delta-badge
       title={title}
       className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
-        delta.pct === 0
-          ? 'border-border bg-muted text-muted-foreground'
-          : delta.up
-            ? 'border-green-200 bg-green-50 text-green-700'
-            : 'border-red-200 bg-red-50 text-red-700'
+        delta.pct === 0 ? 'border-border bg-muted text-muted-foreground' : delta.up ? 'delta-up' : 'delta-down'
       }`}
     >
       <Icon className="h-3 w-3" />
@@ -52,6 +48,7 @@ function KpiTile({
   deltaTitle,
   baseline,
   sparkValues,
+  sparkLabels,
   hero,
 }: {
   icon: React.ReactNode;
@@ -63,6 +60,7 @@ function KpiTile({
   deltaTitle: string;
   baseline: string;
   sparkValues: number[];
+  sparkLabels: string[];
   hero?: boolean;
 }) {
   const tweened = useTweenedNumber(value);
@@ -82,7 +80,7 @@ function KpiTile({
           </span>
           <DeltaBadge delta={delta} title={deltaTitle} />
         </div>
-        <Sparkline values={sparkValues} className="h-9 w-full" />
+        <Sparkline values={sparkValues} labels={sparkLabels} format={format} className="h-9 w-full" />
         <div className="text-xs text-muted-foreground">{baseline}</div>
       </CardContent>
     </Card>
@@ -93,12 +91,16 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
   const daily = data.daily ?? [];
   const sparkRevenue = daily.map((d) => Number(d.revenue));
   const sparkOrders = daily.map((d) => Number(d.orders));
+  const sparkLabels = daily.map((d) => {
+    const date = new Date(d.day);
+    return Number.isNaN(date.getTime()) ? d.day : `${date.getMonth() + 1}/${date.getDate()}`;
+  });
   const inProgressTotal =
     Number(data.in_progress.received) + Number(data.in_progress.preparing) + Number(data.in_progress.ready);
 
-  // Deltas vs the historical same-day average (the footer shows the same
-  // baseline, so the badge is verifiable at a glance). 進行中の注文 has no
-  // meaningful historical counterpart — no badge by design.
+  // Deltas vs the historical DAILY average over all history days (the footer
+  // shows the same baseline, so the badge is verifiable at a glance).
+  // 進行中の注文 has no meaningful historical counterpart — no badge by design.
   const salesDelta = computeDelta(Number(data.today_revenue), Number(data.hist_avg_daily_revenue));
   const ordersDelta = computeDelta(Number(data.today_orders), Number(data.hist_avg_daily_orders));
   const aovDelta = computeDelta(Number(data.avg_order_value), Number(data.hist_avg_order_value));
@@ -112,9 +114,10 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
         value={Number(data.today_revenue)}
         format={(v) => fmtPrice(v, 'JPY')}
         delta={salesDelta}
-        deltaTitle="過去データ同日平均比"
-        baseline={`昨日最終 ${fmtPrice(data.yesterday_revenue, 'JPY')} / 過去データ同日平均 ${fmtPrice(data.hist_avg_daily_revenue, 'JPY')}`}
+        deltaTitle="過去の日次平均比"
+        baseline={`昨日最終 ${fmtPrice(data.yesterday_revenue, 'JPY')} / 過去の日次平均 ${fmtPrice(data.hist_avg_daily_revenue, 'JPY')}`}
         sparkValues={sparkRevenue}
+        sparkLabels={sparkLabels}
       />
       <KpiTile
         icon={<ShoppingBag className="h-4 w-4" />}
@@ -122,9 +125,10 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
         value={Number(data.today_orders)}
         format={(v) => `${v}件`}
         delta={ordersDelta}
-        deltaTitle="過去データ同日平均比"
-        baseline={`昨日 ${data.yesterday_orders}件 / 過去平均 ${Math.round(Number(data.hist_avg_daily_orders))}件`}
+        deltaTitle="過去の日次平均比"
+        baseline={`昨日 ${data.yesterday_orders}件 / 過去の日次平均 ${Math.round(Number(data.hist_avg_daily_orders))}件`}
         sparkValues={sparkOrders}
+        sparkLabels={sparkLabels}
       />
       <KpiTile
         icon={<Layers className="h-4 w-4" />}
@@ -132,9 +136,10 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
         value={Number(data.avg_order_value)}
         format={(v) => fmtPrice(v, 'JPY')}
         delta={aovDelta}
-        deltaTitle="過去データ平均比"
-        baseline={`過去データ平均 ${fmtPrice(data.hist_avg_order_value, 'JPY')}`}
+        deltaTitle="過去の日次平均比"
+        baseline={`過去の日次平均 ${fmtPrice(data.hist_avg_order_value, 'JPY')}`}
         sparkValues={sparkRevenue.map((r, i) => (sparkOrders[i] > 0 ? Math.round(r / sparkOrders[i]) : 0))}
+        sparkLabels={sparkLabels}
       />
       <KpiTile
         icon={<Clock className="h-4 w-4" />}
@@ -145,6 +150,7 @@ export function KpiTiles({ data }: { data: import('../../lib/api').HistorySummar
         deltaTitle=""
         baseline={`受付 ${data.in_progress.received}・調理中 ${data.in_progress.preparing}・完成 ${data.in_progress.ready}`}
         sparkValues={sparkOrders}
+        sparkLabels={sparkLabels}
       />
     </div>
   );
