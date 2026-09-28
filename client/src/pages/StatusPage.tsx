@@ -4,6 +4,8 @@ import { Card, CardContent } from '@databricks/appkit-ui/react';
 import { Activity, ArrowRight, Bot, CheckCircle2, Database, KeyRound, ListOrdered, RefreshCw, Sparkles, Timer } from 'lucide-react';
 import { api, fmtPrice, type OrderEvent, type StatusResponse } from '../lib/api';
 import { fmtAgo, useNow } from '../lib/use-now';
+import { ArchDiagram } from '../components/status/ArchDiagram';
+import { DataBrowser } from '../components/status/DataBrowser';
 
 function Row({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
@@ -99,28 +101,11 @@ export function StatusPage() {
       </div>
       {error && <div className="text-sm text-red-600">ステータス取得に失敗: {error}</div>}
 
-      {/* Architecture flow */}
+      {/* Architecture diagram (native SVG, theme-aware, responsive) */}
       <Card>
         <CardContent className="p-4 space-y-3">
           <h3 className="font-medium text-sm">アーキテクチャ</h3>
-          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-stretch gap-2 text-xs">
-            {[
-              { title: 'ブラウザ', sub: 'React SPA' },
-              { title: 'Databricks App', sub: 'Express + バリスタエージェント (on-app)' },
-              { title: 'Lakebase', sub: 'OLTP / OBO + RLS' },
-              { title: 'Lakehouse Sync', sub: 'CDC (Beta)' },
-              { title: 'UC Delta', sub: 'lb_*_history → ビュー' },
-              { title: 'Genie', sub: '自然言語分析' },
-            ].map((n, i, arr) => (
-              <div key={n.title} className="flex items-center gap-2">
-                <div className="rounded-md border bg-muted/40 px-3 py-2">
-                  <div className="font-semibold">{n.title}</div>
-                  <div className="text-muted-foreground">{n.sub}</div>
-                </div>
-                {i < arr.length - 1 && <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 rotate-90 sm:rotate-0" />}
-              </div>
-            ))}
-          </div>
+          <ArchDiagram />
           <p className="text-xs text-muted-foreground">
             注文は Lakebase に OBO (ユーザー本人の権限) で書き込まれ、CDC で数秒後に Unity Catalog の Delta
             テーブルへ複製されます。Genie はその Delta テーブル(最新状態ビュー)を参照して分析・提案を行います。
@@ -325,6 +310,9 @@ export function StatusPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Data browser: on-demand, read-only table inspection (Lakebase + Delta) */}
+      <DataBrowser />
     </div>
   );
 }

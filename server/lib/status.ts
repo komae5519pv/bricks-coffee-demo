@@ -90,6 +90,11 @@ let deltaCache: { key: string; synced: Map<string, string> } | null = null;
 
 /** Run one SQL statement on the configured warehouse; returns rows as string arrays. */
 async function runStatement(statement: string): Promise<(string | null)[][]> {
+  return (await runStatementWithSchema(statement)).rows;
+}
+
+/** Like runStatement but also returns the column names (for the data browser). */
+export async function runStatementWithSchema(statement: string): Promise<{ columns: string[]; rows: (string | null)[][] }> {
   const warehouseId = process.env.DATABRICKS_WAREHOUSE_ID;
   if (!warehouseId) throw new Error('DATABRICKS_WAREHOUSE_ID is not set');
   const client = getWorkspaceClient({});
@@ -115,7 +120,8 @@ async function runStatement(statement: string): Promise<(string | null)[][]> {
   if (state !== 'SUCCEEDED') {
     throw new Error(`statement ${state}: ${resp.status?.error?.message ?? 'unknown error'}`);
   }
-  return (resp.result?.data_array ?? []) as (string | null)[][];
+  const columns = (resp.manifest?.schema?.columns ?? []).map((c) => c.name ?? '');
+  return { columns, rows: (resp.result?.data_array ?? []) as (string | null)[][] };
 }
 
 export async function getDeltaSyncStatus(): Promise<DeltaSyncStatus> {

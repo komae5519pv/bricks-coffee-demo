@@ -95,6 +95,18 @@ export interface Order {
   items: OrderItem[];
 }
 
+/** Data browser (status page): one browse result page. */
+export interface BrowseResult {
+  source: 'lakebase' | 'delta';
+  table: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  limit: number;
+  offset: number;
+  fetchedAt: string;
+  scopeNote: string;
+}
+
 /** One row of the live order event log on the status page. */
 export interface OrderEvent {
   id: string;
@@ -234,6 +246,15 @@ export const api = {
       body: JSON.stringify({ store_id: storeId, customer_name: customerName, items }),
     }),
   orderEvents: () => req<{ events: OrderEvent[] }>('/api/order-events'),
+  browseTables: () => req<{ tables: { key: string; source: string; label: string }[] }>('/api/browse/tables'),
+  browse: (key: string, opts: { limit?: number; offset?: number; q?: string }) => {
+    const params = new URLSearchParams();
+    if (opts.limit) params.set('limit', String(opts.limit));
+    if (opts.offset) params.set('offset', String(opts.offset));
+    if (opts.q) params.set('q', opts.q);
+    const qs = params.toString();
+    return req<BrowseResult>(`/api/browse/${encodeURIComponent(key)}${qs ? `?${qs}` : ''}`);
+  },
   board: (storeId: string) => req<Order[]>(`/api/board?store_id=${encodeURIComponent(storeId)}`),
   setStatus: (orderId: string, status: Order['status']) =>
     req<{ id: string; status: string }>(`/api/orders/${orderId}/status`, {

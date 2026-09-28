@@ -12,6 +12,7 @@ import type { AppHandle } from './server';
 import type { EmbeddingsInvoker } from './lib/embed';
 import { searchMenu, priceCart, insertOrder, reembedItems, type DbLike } from './lib/menu';
 import { getDeltaSyncStatus, getLakebaseStatus, getOrderEvents, recordCommit } from './lib/status';
+import { browse, listBrowseTables } from './lib/browse';
 import { pickImage } from './lib/images';
 
 export interface OrderRow {
@@ -626,6 +627,30 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
         res.json({ events });
       } catch (e) {
         res.status(500).json({ error: String(e) });
+      }
+    });
+
+    /** Data browser (status page): table list + on-demand read-only browse. */
+    app.get('/api/browse/tables', (_req: Request, res: Response) => {
+      res.json({ tables: listBrowseTables() });
+    });
+
+    app.get('/api/browse/:key', async (req: Request, res: Response) => {
+      try {
+        const result = await browse(String(req.params.key), {
+          limit: Number(req.query.limit) || undefined,
+          offset: Number(req.query.offset) || undefined,
+          q: typeof req.query.q === 'string' ? req.query.q : undefined,
+        }, {
+          spDb,
+          userDb: userDb(req),
+          userId: (req.headers['x-forwarded-user'] as string | undefined) ?? null,
+        });
+        res.json(result);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.startsWith('unknown table')) res.status(404).json({ error: msg });
+        else res.status(500).json({ error: msg });
       }
     });
 
