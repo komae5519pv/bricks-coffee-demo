@@ -2,18 +2,7 @@ import { useMemo } from 'react';
 import { Card, CardContent } from '@databricks/appkit-ui/react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { fmtPrice } from '../../lib/api';
-
-function SourceBadge({ live }: { live: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-        live ? 'bg-blue-100 text-blue-800' : 'bg-muted text-muted-foreground'
-      }`}
-    >
-      {live ? 'ライブ / Lakebase' : '履歴'}
-    </span>
-  );
-}
+import { SourceBadge } from './chart-parts';
 
 const QUADRANT_COLORS = ['var(--chart-cat-1)', 'var(--chart-cat-2)', 'var(--chart-cat-3)', 'var(--chart-cat-4)'];
 
@@ -53,7 +42,7 @@ export function MenuBubble({ data }: { data: import('../../lib/api').HistorySumm
   const quadrantLabels = ['稼ぎ頭', '集客商品', '高級ニッチ', '低調'];
 
   return (
-    <Card className="dash-enter dash-enter-4 border shadow-xs">
+    <Card className="dash-enter dash-enter-4 rounded-2xl border shadow-xs">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-sm">メニューエンジニアリング</h3>

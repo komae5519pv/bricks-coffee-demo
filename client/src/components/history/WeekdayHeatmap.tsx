@@ -1,17 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent } from '@databricks/appkit-ui/react';
-
-function SourceBadge({ live }: { live: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-        live ? 'bg-blue-100 text-blue-800' : 'bg-muted text-muted-foreground'
-      }`}
-    >
-      {live ? 'ライブ / Lakebase' : '履歴'}
-    </span>
-  );
-}
+import { SourceBadge } from './chart-parts';
 
 const DAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 7-19
@@ -32,7 +21,7 @@ export function WeekdayHeatmap({ data }: { data: import('../../lib/api').History
   }, [data]);
 
   return (
-    <Card className="dash-enter dash-enter-4 border shadow-xs">
+    <Card className="dash-enter dash-enter-4 rounded-2xl border shadow-xs">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-sm">曜日×時間帯の注文分布 (UTC)</h3>

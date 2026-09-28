@@ -5,21 +5,10 @@ import { select } from 'd3-selection';
 import 'd3-transition';
 import { Plus, Minus, RotateCcw } from 'lucide-react';
 import { fmtPrice } from '../../lib/api';
+import { SourceBadge } from './chart-parts';
 
 // world-atlas topojson (110m, lightweight) — vendored like every other dep
 import worldData from 'world-atlas/countries-110m.json';
-
-function SourceBadge({ live }: { live: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-        live ? 'bg-blue-100 text-blue-800' : 'bg-muted text-muted-foreground'
-      }`}
-    >
-      {live ? 'ライブ / Lakebase' : '履歴'}
-    </span>
-  );
-}
 
 interface StoreGeo {
   store_id: string;
@@ -153,7 +142,7 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
   };
 
   return (
-    <Card className="dash-enter dash-enter-3 border shadow-xs">
+    <Card className="dash-enter dash-enter-3 rounded-2xl border shadow-xs">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-sm">店舗別売上（世界）</h3>

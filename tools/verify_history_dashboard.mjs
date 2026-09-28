@@ -71,6 +71,51 @@ if (liveCheck.bubbleLen < 1) failures.push('no bubble data');
 if (liveCheck.heatmapLen < 1) failures.push('no heatmap data');
 if (liveCheck.geoLen < 12) failures.push(`store_geo has ${liveCheck.geoLen} stores (want 12)`);
 
+// ---------- 0.5. craft refresh: KPI delta badges, live pill pulse, light theme ----------
+const craftCheck = await page.evaluate(() => {
+  const page = document.querySelector('[data-history-page]');
+  const badges = document.querySelectorAll('[data-delta-badge]');
+  const pulse = document.querySelector('[data-live-pulse]');
+  const tiles = document.querySelectorAll('[data-kpi-tile]');
+  const pageBg = page ? getComputedStyle(page).backgroundColor : null;
+  const cardBg = tiles.length > 0 ? getComputedStyle(tiles[0]).backgroundColor : null;
+  const cardRadius = tiles.length > 0 ? parseFloat(getComputedStyle(tiles[0]).borderRadius) : 0;
+  // luminance: handles oklab/oklch (L 0..1), lab/lch (L 0..100), rgb()
+  const lum = (c) => {
+    if (!c) return -1;
+    let m = c.match(/^(oklab|oklch)\(\s*([\d.]+)/);
+    if (m) return Number(m[2]);
+    m = c.match(/^(lab|lch)\(\s*([\d.]+)/);
+    if (m) return Number(m[2]) / 100;
+    m = c.match(/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/);
+    if (!m) return -1;
+    const [r, g, b] = [Number(m[1]) / 255, Number(m[2]) / 255, Number(m[3]) / 255];
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  return {
+    badgeCount: badges.length,
+    hasPulse: !!pulse,
+    tileCount: tiles.length,
+    pageBg,
+    pageLum: lum(pageBg),
+    bodyBg: getComputedStyle(document.body).backgroundColor,
+    bodyLum: lum(getComputedStyle(document.body).backgroundColor),
+    cardRadius,
+  };
+});
+console.log('craft check:', JSON.stringify(craftCheck));
+if (craftCheck.tileCount !== 4) failures.push(`KPI tiles != 4 (${craftCheck.tileCount})`);
+// 3 tiles carry a delta badge (進行中の注文 honestly shows none)
+if (craftCheck.badgeCount !== 3) failures.push(`delta badges != 3 (${craftCheck.badgeCount})`);
+if (!craftCheck.hasPulse) failures.push('live pill pulse dot missing');
+// light theme maintained: page tint AND app background must both be light
+if (craftCheck.pageLum < 0.85) failures.push(`page background too dark (lum=${craftCheck.pageLum.toFixed(2)})`);
+if (craftCheck.bodyLum < 0.85) failures.push(`app background went dark (lum=${craftCheck.bodyLum.toFixed(2)})`);
+// 3-layer material: the page tint must be visibly distinct from the app bg
+if (craftCheck.pageBg === craftCheck.bodyBg) failures.push('page tint equals app background (no material layering)');
+if (craftCheck.cardRadius < 15) failures.push(`cards not rounded-2xl (radius=${craftCheck.cardRadius}px)`);
+await page.screenshot({ path: '/tmp/history-v3-kpi-craft.png', clip: { x: 0, y: 0, width: 1440, height: 420 } });
+
 // ---------- 1. donut: recharts Pie with cornerRadius (no hand-made look) ----------
 const donutCheck = await page.evaluate(() => {
   const pie = document.querySelector('.recharts-pie');
@@ -216,7 +261,7 @@ const structure = await page.evaluate(() => {
     ranking: text.includes('店舗別売上ランキング'),
     popular: text.includes('人気商品 Top 10'),
     sparklines: document.querySelectorAll('svg path[stroke="var(--chart-primary)"]').length,
-    liveBadge: document.querySelectorAll('[class*="bg-blue-100"]').length,
+    liveBadge: [...document.querySelectorAll('span')].filter((s) => s.textContent.trim() === 'ライブ / Lakebase').length,
   };
 });
 console.log('structure:', JSON.stringify(structure));

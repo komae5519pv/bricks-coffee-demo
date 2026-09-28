@@ -32,7 +32,11 @@ export function HistoryPage() {
   }, [load]);
 
   return (
-    <div className="space-y-6">
+    // 3-layer material in the light theme: the page area carries a very
+    // light gray tint (bg-muted/25) so white cards float above it, and
+    // sunken elements (bg-muted) sit one step below. Light cleanliness is
+    // preserved — this is a tint, not a dark theme.
+    <div data-history-page className="-m-4 md:-m-6 min-h-[calc(100vh-3.5rem)] bg-muted/25 p-4 md:p-6 space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap tracking-tight">
           <BarChart3 className="h-5 w-5" /> 売上・履歴

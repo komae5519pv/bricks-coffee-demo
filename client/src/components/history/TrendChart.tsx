@@ -10,19 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { fmtPrice } from '../../lib/api';
-import { ChartTooltipCard } from './chart-parts';
-
-function SourceBadge({ live }: { live: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-        live ? 'bg-blue-100 text-blue-800' : 'bg-muted text-muted-foreground'
-      }`}
-    >
-      {live ? 'ライブ / Lakebase' : '履歴'}
-    </span>
-  );
-}
+import { ChartTooltipCard, SourceBadge } from './chart-parts';
 
 /** Monthly revenue trend: area with transparent gradient fill; the live
  * current month renders as an accent dot + segment (B1's is_live data). */
@@ -42,7 +30,7 @@ export function TrendChart({ data }: { data: import('../../lib/api').HistorySumm
   const fmt = (v: number) => (metric === 'revenue' ? fmtPrice(v, 'JPY') : `${v}件`);
 
   return (
-    <Card className="dash-enter dash-enter-2 border shadow-xs">
+    <Card className="dash-enter dash-enter-2 rounded-2xl border shadow-xs">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-3">
           <h3 className="font-medium text-sm">月別売上トレンド</h3>
