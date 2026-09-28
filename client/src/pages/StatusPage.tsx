@@ -243,14 +243,14 @@ export function StatusPage() {
                 {latest == null
                   ? 'まだ注文イベントがありません'
                   : latest.sync_stalled
-                    ? 'CDC 同期が遅れています (最後の注文が5分以上 Delta に未反映)'
+                    ? '5分を超えて Delta に未反映の注文があります (照会済み)'
                     : latest.lag_seconds != null
                       ? `最後の注文が Delta に反映: ${latest.lag_seconds < 1 ? latest.lag_seconds.toFixed(3) : latest.lag_seconds.toFixed(1)}秒`
                       : `最新注文は Delta 反映待ち (コミットから ${Math.max(0, Math.floor((now - new Date(latest.lakebase_committed_at).getTime()) / 1000))}秒)`}
               </div>
               <div className="text-xs text-muted-foreground">
                 {latest?.sync_stalled
-                  ? 'Lakehouse Sync (wal2delta) の状態を確認してください。5分を超えた未反映注文の Delta 再クエリは停止しています'
+                  ? '起動時の一括照会で確認済みです。5分を超えた注文の Delta 再クエリは停止しています（Lakehouse Sync の状態を確認してください）'
                   : latestSyncedLag != null
                     ? `直近の反映遅延の実測: ${latestSyncedLag < 1 ? latestSyncedLag.toFixed(3) : latestSyncedLag.toFixed(1)}秒 (Delta 反映時刻 − Lakebase コミット時刻)`
                     : 'Delta への反映を待っています (CDC はコミット後おおむね数秒で反映)'}
@@ -289,7 +289,7 @@ export function StatusPage() {
                       {waiting ? (
                         e.sync_stalled ? (
                           <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">
-                            Delta 同期遅延 (5分超・再クエリ停止)
+                            5分超・未反映 (照会済み・再クエリ停止)
                           </span>
                         ) : (
                           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">Delta 反映待ち…</span>

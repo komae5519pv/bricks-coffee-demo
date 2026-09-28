@@ -88,6 +88,20 @@ export interface OrderEvent {
  * unsynced or a new order id showed up — quiet polling stays Lakebase-only. */
 let deltaCache: { key: string; synced: Map<string, string> } | null = null;
 
+/**
+ * One-shot backfill flag: the very first getOrderEvents call after process
+ * start queries ALL missing ids (including >SYNC_STALE_MS) once, so an app
+ * restart doesn't leave every order with a false "sync stalled" badge.
+ * Subsequent polls keep the safety valve (only <SYNC_STALE_MS).
+ */
+let backfillDone = false;
+
+/** Test hook: reset the one-shot backfill so restart scenarios can be replayed. */
+export function resetBackfillForTests(): void {
+  backfillDone = false;
+  deltaCache = null;
+}
+
 /** Run one SQL statement on the configured warehouse; returns rows as string arrays. */
 async function runStatement(statement: string): Promise<(string | null)[][]> {
   return (await runStatementWithSchema(statement)).rows;
@@ -257,9 +271,14 @@ export async function getOrderEvents(
   const cacheKey = ids.join(',');
   const cached = deltaCache?.key === cacheKey ? deltaCache.synced : null;
   const missing = cached ? ids.filter((id) => !cached.has(id)) : ids;
-  // Only still-plausible ids are worth a warehouse round-trip; stalled
-  // ones (>SYNC_STALE_MS) stay unsynced and are flagged for the UI.
-  const queryIds = missing.filter((id) => (ageOf.get(id) ?? Infinity) < SYNC_STALE_MS);
+  // First call after process start: query ALL missing ids once (backfill) so
+  // a restart doesn't show false "sync stalled" on every old order. After
+  // that, only still-plausible ids (<SYNC_STALE_MS) are worth a round-trip;
+  // stalled ones (>SYNC_STALE_MS) stay unsynced and are flagged for the UI.
+  const queryIds = backfillDone
+    ? missing.filter((id) => (ageOf.get(id) ?? Infinity) < SYNC_STALE_MS)
+    : missing;
+  if (!backfillDone && missing.length > 0) backfillDone = true;
   let synced = cached;
   if (queryIds.length > 0) {
     const rows = await runSql(

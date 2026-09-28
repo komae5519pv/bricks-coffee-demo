@@ -10,7 +10,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import type { AppHandle } from './server';
 import type { EmbeddingsInvoker } from './lib/embed';
-import { searchMenu, priceCart, insertOrder, reembedItems, type DbLike } from './lib/menu';
+import { searchMenu, priceCart, insertOrder, reembedItems, syncMenuItemToDelta, deleteMenuItemFromDelta, type DbLike } from './lib/menu';
 import { getDeltaSyncStatus, getLakebaseStatus, getOrderEvents, recordCommit } from './lib/status';
 import { browse, listBrowseTables } from './lib/browse';
 import { pickImage } from './lib/images';
@@ -718,6 +718,9 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           return;
         }
         await reembedItems(spDb, serving, [sku]);
+        // Mirror into the Delta-side static menu copy (PG vector column keeps
+        // menu_items out of CDC — the app syncs edits itself).
+        void syncMenuItemToDelta(spDb, sku);
         res.status(201).json({ sku });
       } catch (e) {
         res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
@@ -777,6 +780,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
         if (d.item_name !== undefined || d.category !== undefined || d.description !== undefined) {
           await reembedItems(spDb, serving, [String(req.params.sku)]);
         }
+        void syncMenuItemToDelta(spDb, String(req.params.sku));
         res.json({ sku: rows[0].sku, reembedded: d.item_name !== undefined || d.category !== undefined || d.description !== undefined });
       } catch (e) {
         res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
@@ -794,6 +798,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           res.status(403).json({ error: 'メニューが見つからないか、削除権限がありません(その店舗のスタッフのみ)' });
           return;
         }
+        void deleteMenuItemFromDelta(spDb, String(req.params.sku));
         res.json({ deleted: req.params.sku });
       } catch (e) {
         res.status(500).json({ error: String(e) });

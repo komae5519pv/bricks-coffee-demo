@@ -342,3 +342,64 @@ export async function reembedItems(
   }
   return rows.length;
 }
+
+/**
+ * Sync a changed menu item into the Delta-side static menu_items table
+ * (the PG table's vector column keeps it out of CDC, so the app mirrors
+ * edits itself). Runs as the service principal via the statement API —
+ * bounded warehouse cost, only on explicit admin action.
+ * Errors are logged, never thrown: the Lakebase write already succeeded
+ * and the Delta copy is a derived snapshot (Genie reads it).
+ */
+export async function syncMenuItemToDelta(db: DbLike, sku: string): Promise<void> {
+  try {
+    const { rows } = await db.query<MenuRow>(
+      `SELECT sku, store_id, item_key, item_name, category, size, price::text, currency,
+              description, active, calories_kcal, protein_g::text, fat_g::text,
+              contains_milk, contains_egg, contains_wheat, contains_nuts,
+              alt_milk_options, scenes, is_classic, is_new, is_seasonal, target_tags
+       FROM cofee_shop.menu_items WHERE sku = $1`,
+      [sku],
+    );
+    const catalog = process.env.COFFEE_CATALOG ?? '';
+    const schema = process.env.COFFEE_SCHEMA ?? '';
+    const { runStatementWithSchema } = await import('./status');
+    await runStatementWithSchema(`DELETE FROM ${catalog}.${schema}.menu_items WHERE sku = '${sku.replace(/'/g, "''")}'`);
+    if (rows.length === 0) return; // deleted in Lakebase — nothing to insert
+    const r = rows[0];
+    const esc = (v: string | number | boolean | null | undefined): string => {
+      if (v == null) return 'NULL';
+      if (typeof v === 'boolean') return v ? 'true' : 'false';
+      if (typeof v === 'number') return String(v);
+      return `'${v.replace(/'/g, "''")}'`;
+    };
+    await runStatementWithSchema(
+      `INSERT INTO ${catalog}.${schema}.menu_items
+         (sku, store_id, item_key, item_name, category, size, price, currency,
+          description, active, calories_kcal, protein_g, fat_g,
+          contains_milk, contains_egg, contains_wheat, contains_nuts,
+          alt_milk_options, scenes, is_classic, is_new, is_seasonal, target_tags)
+       VALUES (${[
+        r.sku, r.store_id, r.item_key, r.item_name, r.category, r.size,
+        Number(r.price), r.currency, r.description, r.active,
+        r.calories_kcal, r.protein_g ? Number(r.protein_g) : null, r.fat_g ? Number(r.fat_g) : null,
+        r.contains_milk, r.contains_egg, r.contains_wheat, r.contains_nuts,
+        r.alt_milk_options, r.scenes, r.is_classic, r.is_new, r.is_seasonal, r.target_tags,
+      ].map(esc).join(', ')})`,
+    );
+  } catch (e) {
+    console.warn(`syncMenuItemToDelta(${sku}) failed (Delta copy is stale):`, e);
+  }
+}
+
+/** Remove a deleted SKU from the Delta-side menu copy. */
+export async function deleteMenuItemFromDelta(_db: DbLike, sku: string): Promise<void> {
+  try {
+    const catalog = process.env.COFFEE_CATALOG ?? '';
+    const schema = process.env.COFFEE_SCHEMA ?? '';
+    const { runStatementWithSchema } = await import('./status');
+    await runStatementWithSchema(`DELETE FROM ${catalog}.${schema}.menu_items WHERE sku = '${sku.replace(/'/g, "''")}'`);
+  } catch (e) {
+    console.warn(`deleteMenuItemFromDelta(${sku}) failed (Delta copy is stale):`, e);
+  }
+}

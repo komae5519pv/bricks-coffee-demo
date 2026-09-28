@@ -41,6 +41,9 @@ def main() -> int:
         f'GRANT USE CATALOG ON CATALOG {CATALOG} TO `{sp}`',
         f'GRANT USE SCHEMA ON SCHEMA {CATALOG}.{SCHEMA} TO `{sp}`',
         f'GRANT SELECT ON SCHEMA {CATALOG}.{SCHEMA} TO `{sp}`',
+        # menu_items is a static Delta copy synced by the app on admin edits
+        # (PG vector column keeps it out of CDC) — needs MODIFY, not just SELECT.
+        f'GRANT MODIFY ON TABLE {CATALOG}.{SCHEMA}.menu_items TO `{sp}`',
     ]:
         print('==', sql)
         cli('experimental', 'aitools', 'tools', 'query', sql, profile=args.profile)

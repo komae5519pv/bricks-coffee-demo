@@ -43,7 +43,7 @@ LLM: databricks-claude-sonnet-4-5 / 埋め込み: databricks-qwen3-embedding-0-6
 | Lakebase テーブル | 内容 | Delta 側 |
 |---|---|---|
 | stores | 店舗マスタ 12店 | lb_stores_history → ビュー stores |
-| menu_items | SKU 924件 + vector(1024) | **CDC 非対象**(vector 非サポート)。Delta には seed から menu_items テーブルとして複製 |
+| menu_items | SKU 924件 + vector(1024) | **CDC 非対象**(vector 非サポート)。Delta には seed から menu_items テーブルとして複製。**メニュー管理での編集はアプリが DELETE+INSERT で Delta にミラー**(server/lib/menu.ts syncMenuItemToDelta) |
 | orders | ライブ注文 | lb_orders_history → ビュー orders |
 | order_items | 注文明細 | lb_order_items_history → ビュー order_items |
 | historical_orders | 過去注文 7,284行(分析用) | lb_historical_orders_history → ビュー historical_orders |
@@ -56,6 +56,8 @@ LLM: databricks-claude-sonnet-4-5 / 埋め込み: databricks-qwen3-embedding-0-6
 TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATION` が冪等に変換)。
 型変更は CDC の resnapshot を引くので、**resnapshot 後は Delta 側ビューを CREATE OR REPLACE で
 作り直すこと**(tools/setup_delta.py を再実行すればよい)。
+
+**chat_threads/chat_messages の REPLICA IDENTITY FULL**: wal2delta で SKIPPED(REPLICA IDENTITY FULL 未設定)だが、会話の Delta 同期要件は現時点でないため現状維持。Delta 側で会話を分析したくなったら REPLICA IDENTITY FULL を設定して CDC 対象に加える。
 
 ## 商品画像 (Unsplash)
 
