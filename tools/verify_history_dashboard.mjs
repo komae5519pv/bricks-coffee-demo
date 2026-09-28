@@ -71,6 +71,27 @@ if (liveCheck.bubbleLen < 1) failures.push('no bubble data');
 if (liveCheck.heatmapLen < 1) failures.push('no heatmap data');
 if (liveCheck.geoLen < 12) failures.push(`store_geo has ${liveCheck.geoLen} stores (want 12)`);
 
+// ---------- 1. donut: recharts Pie with cornerRadius (no hand-made look) ----------
+const donutCheck = await page.evaluate(() => {
+  const pie = document.querySelector('.recharts-pie');
+  const sectors = document.querySelectorAll('.recharts-sector');
+  const firstSector = sectors[0];
+  const hasCornerRadius = firstSector?.getAttribute('d')?.includes('A') ?? false; // arc segments exist
+  const centerTotal = document.body.innerText.includes('合計');
+  return {
+    hasPie: !!pie,
+    sectorCount: sectors.length,
+    hasCornerRadius,
+    centerTotal,
+  };
+});
+console.log('donut structure:', JSON.stringify(donutCheck));
+if (!donutCheck.hasPie) failures.push('no recharts pie found');
+if (donutCheck.sectorCount < 5) failures.push(`donut sectors too few (${donutCheck.sectorCount})`);
+if (!donutCheck.hasCornerRadius) failures.push('donut sectors have no corner radius (hand-made look)');
+if (!donutCheck.centerTotal) failures.push('donut center total missing');
+await page.screenshot({ path: '/tmp/donut-check.png', clip: { x: 720, y: 600, width: 720, height: 500 } });
+
 // ---------- 1. world map: land polygons actually render ----------
 // (regression: SVG elements existed but land geometry was invisible —
 // delta-encoded TopoJSON was used as absolute lon/lat)
@@ -110,6 +131,38 @@ else {
   if (mapCheck.tokyoX != null && !mapCheck.tokyoEastOfCenter) failures.push(`Tokyo bubble misplaced (cx=${mapCheck.tokyoX}, want >360 = east hemisphere)`);
 }
 await page.screenshot({ path: '/tmp/history-v3-map-check.png', clip: { x: 0, y: 600, width: 720, height: 500 } });
+
+// ---------- 1b. map zoom: transform changes, bubbles follow ----------
+const zoomCheck = await page.evaluate(() => {
+  const svg = document.querySelector('svg[aria-label="世界地図"]');
+  if (!svg) return { hasSvg: false };
+  const g = svg.querySelector('g');
+  const transform = g?.getAttribute('transform') ?? '';
+  const match = transform.match(/translate\(([^,]+),([^)]+)\) scale\(([^)]+)\)/);
+  return {
+    hasSvg: true,
+    hasTransformGroup: !!g,
+    transform,
+    scale: match ? Number(match[3]) : 1,
+  };
+});
+console.log('zoom structure:', JSON.stringify(zoomCheck));
+if (!zoomCheck.hasSvg) failures.push('map SVG missing for zoom check');
+else if (!zoomCheck.hasTransformGroup) failures.push('map has no zoom transform group');
+
+// click zoom-in button and verify transform changes
+await page.getByRole('button', { name: '拡大' }).click();
+await page.waitForTimeout(500);
+const zoomAfter = await page.evaluate(() => {
+  const g = document.querySelector('svg[aria-label="世界地図"] g');
+  const transform = g?.getAttribute('transform') ?? '';
+  const match = transform.match(/scale\(([^)]+)\)/);
+  return { transform, scale: match ? Number(match[1]) : 1 };
+});
+console.log('zoom after click:', JSON.stringify(zoomAfter));
+if (zoomAfter.scale <= zoomCheck.scale) failures.push(`zoom-in did not increase scale (${zoomCheck.scale} -> ${zoomAfter.scale})`);
+await page.getByRole('button', { name: 'リセット' }).click();
+await page.waitForTimeout(500);
 
 // ---------- 1. v3 structure ----------
 const structure = await page.evaluate(() => {

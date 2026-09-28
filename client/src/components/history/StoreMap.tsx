@@ -1,5 +1,9 @@
-import { useMemo } from 'react';
-import { Card, CardContent } from '@databricks/appkit-ui/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Card, CardContent, Button } from '@databricks/appkit-ui/react';
+import { zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from 'd3-zoom';
+import { select } from 'd3-selection';
+import 'd3-transition';
+import { Plus, Minus, RotateCcw } from 'lucide-react';
 import { fmtPrice } from '../../lib/api';
 
 // world-atlas topojson (110m, lightweight) — vendored like every other dep
@@ -44,16 +48,25 @@ function ringToPath(ring: number[][]): string {
     .join(' ') + ' Z';
 }
 
-/** World map with revenue bubbles: topojson -> GeoJSON -> self-drawn SVG
- * (equirectangular). No react-simple-maps (React 19 peer conflict). */
+interface ZoomState {
+  x: number;
+  y: number;
+  k: number;
+}
+
+/** World map with revenue bubbles + d3-zoom pan/zoom/reset. The map and
+ * bubbles live in a single <g> under the zoom transform; bubble radius is
+ * screen-fixed (r / k) so zooming in doesn't blow them up. */
 export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/api').HistorySummary; selectedStoreId: string }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const [zoomState, setZoomState] = useState<ZoomState>({ x: 0, y: 0, k: 1 });
+
   const countryPaths = useMemo(() => {
     // TopoJSON -> GeoJSON, self-implemented (world-atlas 110m structure is
-    // simple: arcs are absolute lon/lat pairs, geometries reference them by
-    // index; a negative index means reverse the arc).
+    // simple: arcs are delta-encoded quantized integers with a transform;
+    // decode: cumulative sum, then scale+translate).
     const topology = worldData;
-    // TopoJSON arcs are delta-encoded quantized integers; transform turns
-    // them into real lon/lat. Decode: cumulative sum, then scale+translate.
     const scale = topology.transform.scale;
     const translate = topology.transform.translate;
     const arc = (idx: number): [number, number][] => {
@@ -94,42 +107,86 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
   );
   const maxRevenue = Math.max(1, ...stores.map((s) => s.revenueNum));
 
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = select<SVGSVGElement, unknown>(svgRef.current);
+    const zoomBehavior = zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.5, 8])
+      .translateExtent([
+        [-W * 2, -H * 2],
+        [W * 3, H * 3],
+      ])
+      .on('zoom', (event: { transform: ZoomTransform }) => {
+        setZoomState({ x: event.transform.x, y: event.transform.y, k: event.transform.k });
+      });
+    zoomRef.current = zoomBehavior;
+    svg.call(zoomBehavior);
+    return () => {
+      svg.on('.zoom', null);
+    };
+  }, []);
+
+  const applyTransform = (t: ZoomTransform) => {
+    if (!svgRef.current || !zoomRef.current) return;
+    const zb = zoomRef.current;
+    select(svgRef.current).transition().duration(300).call((sel) => zb.transform(sel as never, t));
+  };
+  const zoomIn = () => applyTransform(zoomIdentity.scale(zoomState.k * 1.5));
+  const zoomOut = () => applyTransform(zoomIdentity.scale(zoomState.k / 1.5));
+  const reset = () => applyTransform(zoomIdentity);
+
   return (
     <Card className="dash-enter dash-enter-3 border shadow-xs">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-sm">店舗別売上（世界）</h3>
           <SourceBadge live={false} />
+          <div className="ml-auto flex gap-1">
+            <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={zoomOut} title="縮小">
+              <Minus className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={zoomIn} title="拡大">
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={reset} title="リセット">
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-        <div className="relative">
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-label="世界地図">
-            {countryPaths.map((d) => (
-              <path
-                key={d.slice(0, 60)}
-                d={d}
-                fill="var(--chart-land)"
-                stroke="var(--chart-land-stroke)"
-                strokeWidth={0.5}
-              />
-            ))}
-            {stores.map((s) => {
-              const p = px(s.lon, s.lat);
-              const r = 4 + Math.sqrt(s.revenueNum / maxRevenue) * 14;
-              return (
-                <g key={s.store_id}>
-                  <circle
-                    cx={p.x}
-                    cy={p.y}
-                    r={r}
-                    fill={s.isSelected ? 'var(--chart-accent)' : 'var(--chart-primary)'}
-                    fillOpacity={0.75}
-                    stroke="var(--background)"
-                    strokeWidth={1.5}
-                  />
-                  <title>{`${s.store_name}: ${fmtPrice(s.revenueNum, 'JPY')}`}</title>
-                </g>
-              );
-            })}
+        <div className="relative overflow-hidden rounded-md border bg-muted/20">
+          <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full cursor-grab active:cursor-grabbing" aria-label="世界地図">
+            <g transform={`translate(${zoomState.x},${zoomState.y}) scale(${zoomState.k})`}>
+              {countryPaths.map((d) => (
+                <path
+                  key={d.slice(0, 60)}
+                  d={d}
+                  fill="var(--chart-land)"
+                  stroke="var(--chart-land-stroke)"
+                  strokeWidth={0.5 / zoomState.k}
+                />
+              ))}
+              {stores.map((s) => {
+                const p = px(s.lon, s.lat);
+                // screen-fixed radius: divide by zoom so the bubble doesn't
+                // blow up when zooming in (design decision: readable at all
+                // zoom levels; a geographic-radius bubble would dominate).
+                const r = (4 + Math.sqrt(s.revenueNum / maxRevenue) * 14) / zoomState.k;
+                return (
+                  <g key={s.store_id}>
+                    <circle
+                      cx={p.x}
+                      cy={p.y}
+                      r={r}
+                      fill={s.isSelected ? 'var(--chart-accent)' : 'var(--chart-primary)'}
+                      fillOpacity={0.75}
+                      stroke="var(--background)"
+                      strokeWidth={1.5 / zoomState.k}
+                    />
+                    <title>{`${s.store_name}: ${fmtPrice(s.revenueNum, 'JPY')}`}</title>
+                  </g>
+                );
+              })}
+            </g>
           </svg>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">

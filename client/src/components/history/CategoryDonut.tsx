@@ -58,9 +58,8 @@ export function CategoryDonut({ data }: { data: import('../../lib/api').HistoryS
                 cy="50%"
                 innerRadius={60}
                 outerRadius={90}
-                paddingAngle={2}
-                stroke="var(--background)"
-                strokeWidth={2}
+                paddingAngle={1}
+                cornerRadius={4}
               />
               <Tooltip content={<ChartTooltipCard fmt={(v) => fmtPrice(v, 'JPY')} />} />
             </PieChart>
