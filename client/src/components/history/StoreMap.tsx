@@ -59,7 +59,11 @@ interface ZoomState {
  * screen-fixed (r / k) so zooming in doesn't blow them up. */
 export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/api').HistorySummary; selectedStoreId: string }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const gRef = useRef<SVGGElement>(null);
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  // zoomState mirrors the d3 transform only at zoom end (not during), so
+  // pan/zoom doesn't re-render React 60x/sec; d3 applies the transform
+  // directly to the <g> element during the gesture.
   const [zoomState, setZoomState] = useState<ZoomState>({ x: 0, y: 0, k: 1 });
 
   const countryPaths = useMemo(() => {
@@ -108,8 +112,9 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
   const maxRevenue = Math.max(1, ...stores.map((s) => s.revenueNum));
 
   useEffect(() => {
-    if (!svgRef.current) return;
+    if (!svgRef.current || !gRef.current) return;
     const svg = select<SVGSVGElement, unknown>(svgRef.current);
+    const g = select<SVGGElement, unknown>(gRef.current);
     const zoomBehavior = zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.5, 8])
       .translateExtent([
@@ -117,6 +122,11 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
         [W * 3, H * 3],
       ])
       .on('zoom', (event: { transform: ZoomTransform }) => {
+        // d3 applies the transform directly — no React re-render mid-gesture
+        g.attr('transform', event.transform.toString());
+      })
+      .on('end', (event: { transform: ZoomTransform }) => {
+        // sync React state once, at gesture end
         setZoomState({ x: event.transform.x, y: event.transform.y, k: event.transform.k });
       });
     zoomRef.current = zoomBehavior;
@@ -126,14 +136,21 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
     };
   }, []);
 
-  const applyTransform = (t: ZoomTransform) => {
+  const zoomBy = (factor: number) => {
     if (!svgRef.current || !zoomRef.current) return;
+    const svg = select<SVGSVGElement, unknown>(svgRef.current);
     const zb = zoomRef.current;
-    select(svgRef.current).transition().duration(300).call((sel) => zb.transform(sel as never, t));
+    // scaleBy keeps the viewport center fixed — pan position is preserved
+    svg.transition().duration(300).call((sel) => zb.scaleBy(sel as never, factor));
   };
-  const zoomIn = () => applyTransform(zoomIdentity.scale(zoomState.k * 1.5));
-  const zoomOut = () => applyTransform(zoomIdentity.scale(zoomState.k / 1.5));
-  const reset = () => applyTransform(zoomIdentity);
+  const zoomIn = () => zoomBy(Math.SQRT2);
+  const zoomOut = () => zoomBy(1 / Math.SQRT2);
+  const reset = () => {
+    if (!svgRef.current || !zoomRef.current) return;
+    const svg = select<SVGSVGElement, unknown>(svgRef.current);
+    const zb = zoomRef.current;
+    svg.transition().duration(300).call((sel) => zb.transform(sel as never, zoomIdentity));
+  };
 
   return (
     <Card className="dash-enter dash-enter-3 border shadow-xs">
@@ -154,8 +171,16 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
           </div>
         </div>
         <div className="relative overflow-hidden rounded-md border bg-muted/20">
-          <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full cursor-grab active:cursor-grabbing" aria-label="世界地図">
-            <g transform={`translate(${zoomState.x},${zoomState.y}) scale(${zoomState.k})`}>
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${W} ${H}`}
+            className="w-full cursor-grab active:cursor-grabbing"
+            style={{ touchAction: 'none' }}
+            aria-label="世界地図"
+          >
+            {/* d3 owns this transform during gestures; React only sets the
+                initial identity and re-syncs at zoom end via zoomState */}
+            <g ref={gRef} transform={`translate(${zoomState.x},${zoomState.y}) scale(${zoomState.k})`}>
               {countryPaths.map((d) => (
                 <path
                   key={d.slice(0, 60)}

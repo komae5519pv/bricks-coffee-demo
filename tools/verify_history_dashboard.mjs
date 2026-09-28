@@ -152,17 +152,53 @@ else if (!zoomCheck.hasTransformGroup) failures.push('map has no zoom transform 
 
 // click zoom-in button and verify transform changes
 await page.getByRole('button', { name: '拡大' }).click();
-await page.waitForTimeout(500);
+await page.waitForTimeout(600);
 const zoomAfter = await page.evaluate(() => {
   const g = document.querySelector('svg[aria-label="世界地図"] g');
   const transform = g?.getAttribute('transform') ?? '';
-  const match = transform.match(/scale\(([^)]+)\)/);
-  return { transform, scale: match ? Number(match[1]) : 1 };
+  const match = transform.match(/translate\(([^,]+),([^)]+)\) scale\(([^)]+)\)/);
+  return {
+    transform,
+    scale: match ? Number(match[3]) : 1,
+    x: match ? Number(match[1]) : 0,
+    y: match ? Number(match[2]) : 0,
+  };
 });
 console.log('zoom after click:', JSON.stringify(zoomAfter));
 if (zoomAfter.scale <= zoomCheck.scale) failures.push(`zoom-in did not increase scale (${zoomCheck.scale} -> ${zoomAfter.scale})`);
+
+// pan, then zoom via button: pan position must be preserved (review #1)
+await page.mouse.move(400, 400);
+await page.mouse.down();
+await page.mouse.move(500, 450, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(300);
+const panBefore = await page.evaluate(() => {
+  const g = document.querySelector('svg[aria-label="世界地図"] g');
+  const t = g?.getAttribute('transform') ?? '';
+  const m = t.match(/translate\(([^,]+),([^)]+)\) scale\(([^)]+)\)/);
+  return m ? { x: Number(m[1]), y: Number(m[2]), k: Number(m[3]) } : null;
+});
+await page.getByRole('button', { name: '拡大' }).click();
+await page.waitForTimeout(600);
+const panAfter = await page.evaluate(() => {
+  const g = document.querySelector('svg[aria-label="世界地図"] g');
+  const t = g?.getAttribute('transform') ?? '';
+  const m = t.match(/translate\(([^,]+),([^)]+)\) scale\(([^)]+)\)/);
+  return m ? { x: Number(m[1]), y: Number(m[2]), k: Number(m[3]) } : null;
+});
+console.log('pan preserved:', JSON.stringify({ panBefore, panAfter }));
+if (panBefore && panAfter) {
+  // x/y should not jump to 0 (identity) after button zoom
+  const jumpedToOrigin = Math.abs(panAfter.x) < 0.01 && Math.abs(panAfter.y) < 0.01 && (Math.abs(panBefore.x) > 1 || Math.abs(panBefore.y) > 1);
+  if (jumpedToOrigin) failures.push(`button zoom reset pan position (was ${panBefore.x.toFixed(1)},${panBefore.y.toFixed(1)} -> ${panAfter.x.toFixed(1)},${panAfter.y.toFixed(1)})`);
+  if (panAfter.k <= panBefore.k) failures.push(`button zoom did not increase scale after pan (${panBefore.k} -> ${panAfter.k})`);
+} else {
+  failures.push('could not read pan transform for preservation check');
+}
+
 await page.getByRole('button', { name: 'リセット' }).click();
-await page.waitForTimeout(500);
+await page.waitForTimeout(600);
 
 // ---------- 1. v3 structure ----------
 const structure = await page.evaluate(() => {
