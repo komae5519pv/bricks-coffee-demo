@@ -103,6 +103,7 @@ export interface BrowseResult {
   rows: Record<string, unknown>[];
   limit: number;
   offset: number;
+  total: number;
   fetchedAt: string;
   scopeNote: string;
 }
@@ -247,11 +248,16 @@ export const api = {
     }),
   orderEvents: () => req<{ events: OrderEvent[] }>('/api/order-events'),
   browseTables: () => req<{ tables: { key: string; source: string; label: string }[] }>('/api/browse/tables'),
-  browse: (key: string, opts: { limit?: number; offset?: number; q?: string }) => {
+  browse: (key: string, opts: { limit?: number; offset?: number; q?: string; sort?: { col: string; dir: string }; filters?: Record<string, string> }) => {
     const params = new URLSearchParams();
     if (opts.limit) params.set('limit', String(opts.limit));
     if (opts.offset) params.set('offset', String(opts.offset));
     if (opts.q) params.set('q', opts.q);
+    if (opts.sort) {
+      params.set('sort_col', opts.sort.col);
+      params.set('sort_dir', opts.sort.dir);
+    }
+    if (opts.filters && Object.keys(opts.filters).length > 0) params.set('filters', JSON.stringify(opts.filters));
     const qs = params.toString();
     return req<BrowseResult>(`/api/browse/${encodeURIComponent(key)}${qs ? `?${qs}` : ''}`);
   },

@@ -105,6 +105,70 @@ console.log('raw JSON visible:', jsonVisible);
 if (!jsonVisible) failures.push('row click did not show raw JSON');
 await page.screenshot({ path: '/tmp/status-browser-json.png' });
 
+// ---------- 2.5. sort: total_price asc/desc applies to the WHOLE table ----------
+// reload orders first so sort starts from the default (created_at DESC)
+await page.selectOption('[data-browse-table-select]', 'lakebase:orders');
+await page.getByRole('button', { name: '読み込む' }).click();
+await page.waitForTimeout(3000);
+const sortAsc = await page.evaluate(() => {
+  const prices = [...document.querySelectorAll('[data-browse-row]')].map((r) => {
+    const cells = [...r.querySelectorAll('td')];
+    const totalIdx = [...document.querySelectorAll('[data-sort-col]')].findIndex((th) => th.textContent.includes('total_price'));
+    return Number(cells[totalIdx]?.textContent?.replace(/[^\d.]/g, '') ?? 0);
+  }).filter((n) => n > 0);
+  return { first: prices[0], last: prices[prices.length - 1], count: prices.length };
+});
+console.log('default order (created_at DESC):', JSON.stringify(sortAsc));
+
+// click total_price header -> asc
+await page.locator('[data-sort-col="total_price"]').click();
+await page.waitForTimeout(3000);
+const ascCheck = await page.evaluate(() => {
+  const prices = [...document.querySelectorAll('[data-browse-row]')].map((r) => {
+    const cells = [...r.querySelectorAll('td')];
+    const totalIdx = [...document.querySelectorAll('[data-sort-col]')].findIndex((th) => th.textContent.includes('total_price'));
+    return Number(cells[totalIdx]?.textContent?.replace(/[^\d.]/g, '') ?? 0);
+  }).filter((n) => n > 0);
+  return { first: prices[0], min: Math.min(...prices), max: Math.max(...prices), count: prices.length };
+});
+console.log('asc order:', JSON.stringify(ascCheck));
+if (ascCheck.count === 0) failures.push('no rows after asc sort');
+if (ascCheck.first !== ascCheck.min) failures.push(`asc sort: first row is not the minimum (first=${ascCheck.first}, min=${ascCheck.min})`);
+
+// click again -> desc
+await page.locator('[data-sort-col="total_price"]').click();
+await page.waitForTimeout(3000);
+const descCheck = await page.evaluate(() => {
+  const prices = [...document.querySelectorAll('[data-browse-row]')].map((r) => {
+    const cells = [...r.querySelectorAll('td')];
+    const totalIdx = [...document.querySelectorAll('[data-sort-col]')].findIndex((th) => th.textContent.includes('total_price'));
+    return Number(cells[totalIdx]?.textContent?.replace(/[^\d.]/g, '') ?? 0);
+  }).filter((n) => n > 0);
+  return { first: prices[0], max: Math.max(...prices), count: prices.length };
+});
+console.log('desc order:', JSON.stringify(descCheck));
+if (descCheck.first !== descCheck.max) failures.push(`desc sort: first row is not the maximum (first=${descCheck.first}, max=${descCheck.max})`);
+
+// ---------- 2.6. column filter: status=received eliminates non-matching rows ----------
+await page.locator('[data-col-filter="status"]').fill('received');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(3000);
+const filterCheck = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('[data-browse-row]')];
+  const statusIdx = [...document.querySelectorAll('[data-sort-col]')].findIndex((th) => th.textContent.includes('status'));
+  const nonMatching = rows.filter((r) => {
+    const cells = [...r.querySelectorAll('td')];
+    return cells[statusIdx]?.textContent?.trim() !== 'received';
+  }).length;
+  return { rows: rows.length, nonMatching };
+});
+console.log('filter status=received:', JSON.stringify(filterCheck));
+if (filterCheck.rows === 0) failures.push('filter returned 0 rows (expected some received orders)');
+if (filterCheck.nonMatching > 0) failures.push(`filter leaked ${filterCheck.nonMatching} non-received rows`);
+await page.locator('[data-col-filter="status"]').fill('');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(2000);
+
 // ---------- 3. PII scoping: own rows only (no other users' PII) ----------
 const piiCheck = await page.evaluate(() => {
   const text = document.querySelector('[data-browse-table]')?.textContent ?? '';

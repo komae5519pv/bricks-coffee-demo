@@ -99,6 +99,7 @@ export interface BrowseResult {
   rows: Record<string, unknown>[];
   limit: number;
   offset: number;
+  total: number;
   fetchedAt: string;
   scopeNote: string;
 }
@@ -111,9 +112,66 @@ function likeClause(searchable: string[], paramIndex: number): string {
   return `(${searchable.map((c) => `${c}::text ILIKE $${paramIndex}`).join(' OR ')})`;
 }
 
+export interface SortSpec {
+  col: string;
+  dir: string;
+}
+
+export type FilterSpec = Record<string, string>;
+
+/** Whitelist: column names must be simple identifiers (no injection vector). */
+function isValidCol(col: string): boolean {
+  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(col);
+}
+
+function buildWhere(
+  def: BrowseDef,
+  ctx: { userId: string | null },
+  q: string | null,
+  filters: FilterSpec | undefined,
+  values: unknown[],
+  inlineSafe: boolean,
+): string {
+  const wheres: string[] = [];
+  if (def.scope === 'sp-userid') {
+    if (!ctx.userId) throw new Error('x-forwarded-user header is required for this table');
+    values.push(ctx.userId);
+    if (def.table.endsWith('chat_messages')) {
+      wheres.push(`thread_id IN (SELECT id FROM cofee_shop.chat_threads WHERE user_email = $${values.length})`);
+    } else {
+      wheres.push(`user_email = $${values.length}`);
+    }
+  }
+  if (q) {
+    values.push(`%${q}%`);
+    wheres.push(likeClause(def.searchable, values.length));
+  }
+  if (filters) {
+    for (const [col, val] of Object.entries(filters)) {
+      if (!isValidCol(col)) throw new Error(`invalid filter column: ${col}`);
+      if (inlineSafe) {
+        const safe = String(val).replace(/'/g, "''");
+        wheres.push(`${col}::text ILIKE '%${safe}%'`);
+      } else {
+        values.push(`%${val}%`);
+        wheres.push(`${col}::text ILIKE $${values.length}`);
+      }
+    }
+  }
+  return wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : '';
+}
+
+function buildOrderBy(def: BrowseDef, sort: SortSpec | undefined): string {
+  if (!sort) return `ORDER BY ${def.orderBy}`;
+  if (!isValidCol(sort.col)) throw new Error(`invalid sort column: ${sort.col}`);
+  if (sort.dir !== 'asc' && sort.dir !== 'desc') throw new Error(`invalid sort direction: ${sort.dir}`);
+  const dir = sort.dir.toUpperCase();
+  return `ORDER BY ${sort.col} ${dir}`;
+}
+
 export async function browse(
   key: string,
-  opts: { limit?: number; offset?: number; q?: string },
+  opts: { limit?: number; offset?: number; q?: string; sort?: SortSpec; filters?: FilterSpec },
   ctx: { spDb: DbLike; userDb: DbLike; userId: string | null },
 ): Promise<BrowseResult> {
   const def = BROWSE_TABLES[key];
@@ -135,15 +193,16 @@ export async function browse(
     // Delta path: warehouse query, on explicit user action only.
     const catalog = process.env.COFFEE_CATALOG ?? '';
     const schema = process.env.COFFEE_SCHEMA ?? '';
-    let where = '';
-    if (q) {
-      // The Statement Execution API has no parameter binding — the filter is
-      // inlined with single-quote escaping (the only injection vector here).
-      const safe = q.replace(/'/g, "''");
-      where = `WHERE (${def.searchable.map((c) => `${c}::text ILIKE '%${safe}%'`).join(' OR ')})`;
-    }
-    const statement = `SELECT * FROM ${catalog}.${schema}.${def.table} ${where} ORDER BY ${def.orderBy} LIMIT ${limit} OFFSET ${offset}`;
-    const { columns, rows } = await runStatementWithSchema(statement);
+    const values: unknown[] = [];
+    const where = buildWhere(def, ctx, q, opts.filters, values, true);
+    const orderBy = buildOrderBy(def, opts.sort);
+    const statement = `SELECT * FROM ${catalog}.${schema}.${def.table} ${where} ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+    const countStatement = `SELECT COUNT(*) AS n FROM ${catalog}.${schema}.${def.table} ${where}`;
+    const [{ columns, rows }, countResult] = await Promise.all([
+      runStatementWithSchema(statement),
+      runStatementWithSchema(countStatement),
+    ]);
+    const total = Number(countResult.rows[0]?.[0] ?? 0);
     return {
       source: 'delta',
       table: `${catalog}.${schema}.${def.table}`,
@@ -151,6 +210,7 @@ export async function browse(
       rows: rows.map((r) => Object.fromEntries(columns.map((c, i) => [c, r[i]]))),
       limit,
       offset,
+      total,
       fetchedAt: new Date().toISOString(),
       scopeNote,
     };
@@ -158,24 +218,16 @@ export async function browse(
 
   // Lakebase path.
   const values: unknown[] = [];
-  const wheres: string[] = [];
-  if (def.scope === 'sp-userid') {
-    if (!ctx.userId) throw new Error('x-forwarded-user header is required for this table');
-    values.push(ctx.userId);
-    if (def.table.endsWith('chat_messages')) {
-      wheres.push(`thread_id IN (SELECT id FROM cofee_shop.chat_threads WHERE user_email = $${values.length})`);
-    } else {
-      wheres.push(`user_email = $${values.length}`);
-    }
-  }
-  if (q) {
-    values.push(`%${q}%`);
-    wheres.push(likeClause(def.searchable, values.length));
-  }
-  const where = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : '';
-  const sql = `SELECT * FROM ${def.table} ${where} ORDER BY ${def.orderBy} LIMIT ${limit} OFFSET ${offset}`;
+  const where = buildWhere(def, ctx, q, opts.filters, values, false);
+  const orderBy = buildOrderBy(def, opts.sort);
+  const sql = `SELECT * FROM ${def.table} ${where} ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+  const countSql = `SELECT COUNT(*)::text AS n FROM ${def.table} ${where}`;
   const db = def.scope === 'user' ? ctx.userDb : ctx.spDb;
-  const { rows } = await db.query<Record<string, unknown>>(sql, values);
+  const [{ rows }, countResult] = await Promise.all([
+    db.query<Record<string, unknown>>(sql, values),
+    db.query<{ n: string }>(countSql, values),
+  ]);
+  const total = Number(countResult.rows[0]?.n ?? 0);
   return {
     source: 'lakebase',
     table: def.table,
@@ -183,6 +235,7 @@ export async function browse(
     rows,
     limit,
     offset,
+    total,
     fetchedAt: new Date().toISOString(),
     scopeNote,
   };

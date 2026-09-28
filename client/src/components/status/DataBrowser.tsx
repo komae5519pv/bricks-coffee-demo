@@ -1,6 +1,6 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, CardContent, Input } from '@databricks/appkit-ui/react';
-import { RefreshCw, Search, Table2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCw, Search, Table2 } from 'lucide-react';
 import { api, type BrowseResult } from '../../lib/api';
 
 /** Safe cell text: primitives as-is, objects/arrays as compact JSON. */
@@ -11,29 +11,41 @@ function cellText(v: unknown): string {
   return JSON.stringify(v);
 }
 
-/** Data browser for the status page: on-demand, read-only table inspection.
- * Delta fetches happen ONLY on explicit user action (no polling, no
- * auto-refresh — warehouse cost discipline). Lakebase tables are cheap but
- * follow the same click-to-load flow for a uniform mental model. */
+/** Data browser for the status page: on-demand, read-only table inspection
+ * with server-side sort (header click) and per-column filters. Delta fetches
+ * happen ONLY on explicit user action (no polling, no auto-refresh).
+ * Sort/filter run in SQL (ORDER BY / WHERE with the same scope clauses), so
+ * they apply to the whole table — never just the visible 50 rows. */
 export function DataBrowser() {
   const [tables, setTables] = useState<{ key: string; source: string; label: string }[]>([]);
   const [tableKey, setTableKey] = useState('lakebase:orders');
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<{ col: string; dir: 'asc' | 'desc' } | null>(null);
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const [result, setResult] = useState<BrowseResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const sortChangedRef = useRef(false);
 
   useEffect(() => {
     api.browseTables().then((d) => setTables(d.tables)).catch(() => setTables([]));
   }, []);
+
+  const activeFilters = Object.fromEntries(Object.entries(colFilters).filter(([, v]) => v.trim() !== ''));
 
   const load = useCallback(
     (offset: number, replace: boolean) => {
       setLoading(true);
       setError(null);
       api
-        .browse(tableKey, { limit: 50, offset, q: q || undefined })
+        .browse(tableKey, {
+          limit: 50,
+          offset,
+          q: q || undefined,
+          sort: sort ?? undefined,
+          filters: Object.keys(activeFilters).length > 0 ? activeFilters : undefined,
+        })
         .then((r) => {
           setResult((prev) =>
             replace || !prev || prev.table !== r.table
@@ -47,10 +59,41 @@ export function DataBrowser() {
         })
         .finally(() => setLoading(false));
     },
-    [tableKey, q],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tableKey, q, sort, colFilters],
   );
 
+  // Reload whenever the user changes the sort (load reads the latest sort
+  // from state on the next render — no stale closure).
+  useEffect(() => {
+    if (!sortChangedRef.current) return;
+    load(0, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort]);
+
+  const toggleSort = (col: string) => {
+    const next = (() => {
+      if (sort?.col === col) {
+        return sort.dir === 'asc' ? { col, dir: 'desc' as const } : sort.dir === 'desc' ? null : { col, dir: 'asc' as const };
+      }
+      return { col, dir: 'asc' as const };
+    })();
+    sortChangedRef.current = true;
+    setSort(next);
+    setResult(null);
+  };
+
+  const setColFilter = (col: string, value: string) => {
+    setColFilters((prev) => ({ ...prev, [col]: value }));
+  };
+
+  const applyFilters = () => {
+    setResult(null);
+    load(0, true);
+  };
+
   const def = tables.find((t) => t.key === tableKey);
+  const visibleCols = result?.columns.slice(0, 8) ?? [];
 
   return (
     <Card className="dash-enter rounded-2xl border shadow-xs">
@@ -72,6 +115,8 @@ export function DataBrowser() {
               setResult(null);
               setError(null);
               setExpanded(null);
+              setSort(null);
+              setColFilters({});
             }}
           >
             <optgroup label="Lakebase（生テーブル）">
@@ -90,11 +135,11 @@ export function DataBrowser() {
             <Input
               data-browse-filter
               className="pl-8 h-11 sm:h-9"
-              placeholder="テキストフィルタ（部分一致）"
+              placeholder="全体テキストフィルタ（部分一致）"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') load(0, true);
+                if (e.key === 'Enter') applyFilters();
               }}
             />
           </div>
@@ -103,7 +148,7 @@ export function DataBrowser() {
             size="sm"
             className="h-11 sm:h-9"
             disabled={loading}
-            onClick={() => load(0, true)}
+            onClick={() => applyFilters()}
           >
             <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
             {result ? '再取得' : '読み込む'}
@@ -121,8 +166,19 @@ export function DataBrowser() {
               {def.source === 'lakebase' ? 'Lakebase の生テーブル' : 'Delta の同期テーブル'}
             </span>
             <span>{result?.scopeNote}</span>
+            {sort && (
+              <span className="inline-flex items-center gap-0.5 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-700">
+                {sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                {sort.col}
+              </span>
+            )}
             {result && (
-              <span className="ml-auto tabular-nums">
+              <span className="ml-auto tabular-nums" data-browse-total>
+                {result.total.toLocaleString()}件中 {result.rows.length}行表示（offset {result.offset}）
+              </span>
+            )}
+            {result && (
+              <span className="tabular-nums">
                 {new Date(result.fetchedAt).toLocaleTimeString('ja-JP', { hour12: false })} 取得
               </span>
             )}
@@ -141,14 +197,43 @@ export function DataBrowser() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    {result.columns.slice(0, 8).map((c) => (
+                    {visibleCols.map((c) => (
                       <th key={c} className="px-2 py-1.5 text-left font-medium text-muted-foreground whitespace-nowrap">
-                        {c}
+                        <button
+                          type="button"
+                          data-sort-col={c}
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() => toggleSort(c)}
+                        >
+                          {c}
+                          {sort?.col === c ? (
+                            sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-40" />
+                          )}
+                        </button>
                       </th>
                     ))}
                     {result.columns.length > 8 && (
                       <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">…</th>
                     )}
+                  </tr>
+                  <tr className="border-b bg-muted/30">
+                    {visibleCols.map((c) => (
+                      <th key={`f-${c}`} className="px-1 py-1">
+                        <Input
+                          data-col-filter={c}
+                          className="h-7 text-xs px-1.5"
+                          placeholder="フィルタ"
+                          value={colFilters[c] ?? ''}
+                          onChange={(e) => setColFilter(c, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') applyFilters();
+                          }}
+                        />
+                      </th>
+                    ))}
+                    {result.columns.length > 8 && <th className="px-1 py-1" />}
                   </tr>
                 </thead>
                 <tbody>
@@ -159,7 +244,7 @@ export function DataBrowser() {
                         className={`border-b last:border-0 cursor-pointer hover:bg-muted/30 ${expanded === i ? 'bg-muted/40' : ''}`}
                         onClick={() => setExpanded(expanded === i ? null : i)}
                       >
-                        {result.columns.slice(0, 8).map((c) => (
+                        {visibleCols.map((c) => (
                           <td key={c} className="px-2 py-1.5 max-w-[220px] truncate tabular-nums" title={cellText(row[c])}>
                             {row[c] == null ? <span className="text-muted-foreground">null</span> : cellText(row[c])}
                           </td>

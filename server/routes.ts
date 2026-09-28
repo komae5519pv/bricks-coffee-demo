@@ -637,10 +637,24 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
 
     app.get('/api/browse/:key', async (req: Request, res: Response) => {
       try {
+        const sortCol = typeof req.query.sort_col === 'string' ? req.query.sort_col : undefined;
+        const sortDir = typeof req.query.sort_dir === 'string' ? req.query.sort_dir : undefined;
+        const sort = sortCol && sortDir ? { col: sortCol, dir: sortDir } : undefined;
+        let filters: Record<string, string> | undefined;
+        if (typeof req.query.filters === 'string') {
+          try {
+            filters = JSON.parse(req.query.filters) as Record<string, string>;
+          } catch {
+            res.status(400).json({ error: 'filters must be valid JSON' });
+            return;
+          }
+        }
         const result = await browse(String(req.params.key), {
           limit: Number(req.query.limit) || undefined,
           offset: Number(req.query.offset) || undefined,
           q: typeof req.query.q === 'string' ? req.query.q : undefined,
+          sort,
+          filters,
         }, {
           spDb,
           userDb: userDb(req),
