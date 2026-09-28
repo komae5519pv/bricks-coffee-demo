@@ -61,6 +61,25 @@ await page.screenshot({ path: '/tmp/status-arch-desktop.png', clip: { x: 0, y: 0
 // ---------- 2. data browser: orders (own rows only) ----------
 await page.getByRole('button', { name: '読み込む' }).click();
 await page.waitForTimeout(3000);
+
+// ---------- 1.5. page width: data browser uses full width (no wasted right space) ----------
+const widthCheck = await page.evaluate(() => {
+  const page = document.querySelector('.max-w-5xl, .max-w-7xl, [class*="max-w"]');
+  const browser = document.querySelector('[data-browse-table]');
+  const browserRect = browser?.getBoundingClientRect();
+  const pageRect = page?.getBoundingClientRect();
+  return {
+    pageMaxW: page?.className ?? '',
+    pageWidth: pageRect?.width ?? 0,
+    browserWidth: browserRect?.width ?? 0,
+    viewport: innerWidth,
+    rightGap: innerWidth - (pageRect?.right ?? 0),
+  };
+});
+console.log('width check:', JSON.stringify(widthCheck));
+if (widthCheck.pageWidth < 1000) failures.push(`page too narrow (${Math.round(widthCheck.pageWidth)}px — max-w-5xl still active)`);
+if (widthCheck.browserWidth < 800) failures.push(`data browser table too narrow (${Math.round(widthCheck.browserWidth)}px)`);
+if (widthCheck.rightGap > 200) failures.push(`excessive right gap (${Math.round(widthCheck.rightGap)}px)`);
 const ordersCheck = await page.evaluate(() => {
   const rows = [...document.querySelectorAll('[data-browse-row]')];
   const badge = document.querySelector('[data-browse-source-badge]')?.textContent ?? '';
