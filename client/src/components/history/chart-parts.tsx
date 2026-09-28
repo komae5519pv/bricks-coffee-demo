@@ -19,7 +19,7 @@ export interface TooltipRow {
  */
 export function TooltipCard({ title, rows }: { title: React.ReactNode; rows: TooltipRow[] }) {
   return (
-    <div data-tooltip-card className="rounded-md border bg-background px-3 py-2 text-sm shadow-md">
+    <div data-tooltip-card role="tooltip" className="rounded-md border bg-background px-3 py-2 text-sm shadow-md">
       <div className="text-xs text-muted-foreground">{title}</div>
       <div className="mt-1 space-y-0.5">
         {rows.map((r) => (

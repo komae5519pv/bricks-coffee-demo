@@ -254,8 +254,30 @@ for (const name of ['東京駅前店', 'Circular Quay', 'Mitte']) {
   if (mapCardText.text.includes(name)) failures.push(`map legend still present (contains ${name})`);
 }
 
-// hover a bubble -> shared TooltipCard with store details
+// a11y: bubbles are keyboard-focusable with an accessible name
 const bubble = page.locator('[data-store-bubble]').first();
+const a11yCheck = await page.evaluate(() => {
+  const bubbles = [...document.querySelectorAll('[data-store-bubble]')];
+  const withTabindex = bubbles.filter((b) => b.getAttribute('tabindex') === '0').length;
+  const withLabel = bubbles.filter((b) => (b.getAttribute('aria-label') ?? '').length > 0).length;
+  return { withTabindex, withLabel, total: bubbles.length };
+});
+console.log('a11y check:', JSON.stringify(a11yCheck));
+if (a11yCheck.withTabindex !== a11yCheck.total) failures.push(`bubbles without tabindex=0 (${a11yCheck.withTabindex}/${a11yCheck.total})`);
+if (a11yCheck.withLabel !== a11yCheck.total) failures.push(`bubbles without aria-label (${a11yCheck.withLabel}/${a11yCheck.total})`);
+
+// keyboard focus shows the tooltip; Escape dismisses (and role="tooltip" is set)
+await bubble.focus();
+await page.waitForTimeout(400);
+const focusTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+console.log('map focus tooltip:', focusTip?.slice(0, 60));
+if (!focusTip) failures.push('keyboard focus did not show the bubble tooltip');
+const roleCount = await page.evaluate(() => document.querySelectorAll('[role="tooltip"]').length);
+if (roleCount < 1) failures.push('no role="tooltip" element while a tooltip is visible');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+
+// hover a bubble -> shared TooltipCard with store details
 await bubble.hover();
 await page.waitForTimeout(400);
 let mapTip = await page.evaluate(() => {
@@ -302,6 +324,30 @@ if (!mapSvgBox) {
 }
 await page.getByRole('button', { name: 'リセット' }).click();
 await page.waitForTimeout(500);
+
+// pin dismissal paths: Escape AND background (ocean) click
+await bubble.click();
+await page.waitForTimeout(400);
+mapTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+if (!mapTip) failures.push('re-pin for Escape dismissal test failed');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+mapTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+console.log('tooltip after Escape:', mapTip);
+if (mapTip) failures.push('Escape did not dismiss the pinned tooltip');
+
+await bubble.click();
+await page.waitForTimeout(400);
+mapTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+if (!mapTip) failures.push('re-pin for background-click test failed');
+if (mapSvgBox) {
+  // click the ocean (top-left of the svg — no bubbles there)
+  await page.mouse.click(mapSvgBox.x + 20, mapSvgBox.y + 15);
+  await page.waitForTimeout(300);
+  mapTip = await page.evaluate(() => document.querySelector('[data-map-tooltip]')?.textContent ?? null);
+  console.log('tooltip after background click:', mapTip);
+  if (mapTip) failures.push('background click did not dismiss the pinned tooltip');
+}
 
 // ---------- 1d. unified tooltips elsewhere + wording ----------
 // KPI sparkline hover

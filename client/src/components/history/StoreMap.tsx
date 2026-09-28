@@ -168,13 +168,26 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
 
   // Tooltip position from the bubble's CURRENT on-screen rect (relative to
   // the wrapper) — correct at any zoom/pan, no manual transform math.
-  const tipFromEvent = (e: React.MouseEvent, id: string): TipState | null => {
+  const tipFor = (el: Element, id: string): TipState | null => {
     if (draggingRef.current) return null;
-    const rect = (e.currentTarget as Element).getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
     const wrap = wrapperRef.current?.getBoundingClientRect();
     if (!wrap) return null;
     return { id, x: rect.left - wrap.left + rect.width / 2, y: rect.top - wrap.top };
   };
+
+  // Escape dismisses a pinned (tap) tooltip from anywhere; existing exits
+  // (same-bubble tap, zoom gesture) are unchanged.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPinnedTip(null);
+        setHoverTip(null);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const tipStore = activeTip ? stores.find((s) => s.store_id === activeTip.id) : null;
 
@@ -203,6 +216,9 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
             className="w-full cursor-grab active:cursor-grabbing"
             style={{ touchAction: 'none' }}
             aria-label="世界地図"
+            // background click/tap (land or ocean, not a bubble — bubbles
+            // stopPropagation) dismisses a pinned tooltip
+            onClick={() => setPinnedTip(null)}
           >
             {/* d3 owns this transform during gestures; React only sets the
                 initial identity and re-syncs at zoom end via zoomState */}
@@ -236,15 +252,25 @@ export function StoreMap({ data, selectedStoreId }: { data: import('../../lib/ap
                       stroke="var(--background)"
                       strokeWidth={(emphasized ? 2.5 : 1.5) / zoomState.k}
                       style={{ cursor: 'pointer' }}
+                      tabIndex={0}
+                      aria-label={`${s.store_name}: 売上 ${fmtPrice(s.revenueNum, 'JPY')}、注文数 ${s.ordersNum.toLocaleString()}件`}
                       onMouseEnter={(e) => {
                         if (hoverCapable.current) {
-                          const t = tipFromEvent(e, s.store_id);
+                          const t = tipFor(e.currentTarget, s.store_id);
                           if (t) setHoverTip(t);
                         }
                       }}
                       onMouseLeave={() => setHoverTip(null)}
+                      // keyboard: focus shows the same tooltip as hover;
+                      // blur/Escape close it (Escape handled globally)
+                      onFocus={(e) => {
+                        const t = tipFor(e.currentTarget, s.store_id);
+                        if (t) setHoverTip(t);
+                      }}
+                      onBlur={() => setHoverTip(null)}
                       onClick={(e) => {
-                        const t = tipFromEvent(e, s.store_id);
+                        e.stopPropagation(); // keep background-click dismissal working
+                        const t = tipFor(e.currentTarget, s.store_id);
                         if (t) setPinnedTip((prev) => (prev?.id === s.store_id ? null : t));
                       }}
                     />
