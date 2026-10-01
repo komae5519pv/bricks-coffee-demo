@@ -15,6 +15,8 @@ import { z } from 'zod';
 import type { DbLike } from '../lib/menu';
 import { searchMenu, getActiveItem, getItemsWithVariants } from '../lib/menu';
 import type { EmbeddingsInvoker } from '../lib/embed';
+import { createTracedBaristaAdapter } from './traced-adapter';
+import { traceToolCall } from '../lib/tracing';
 
 interface StoreRow {
   store_id: string;
@@ -123,7 +125,9 @@ export const BARISTA_MODEL = process.env.BARISTA_MODEL ?? DEFAULT_BARISTA_MODEL;
 
 export const barista = createAgent({
   name: 'barista',
-  model: BARISTA_MODEL,
+  // Traced adapter: root AGENT span per turn + LLM span per model call
+  // (MLflow experiment; see server/lib/tracing.ts). Same model, same loop.
+  model: createTracedBaristaAdapter(BARISTA_MODEL),
   instructions: INSTRUCTIONS,
   tools(plugins) {
     const db = requirePlugin<DbLike>(plugins.lakebase, 'lakebase', ['query']);
@@ -148,12 +152,13 @@ export const barista = createAgent({
         description: 'コーヒーチェーンの店舗一覧を取得します。国・通貨・言語が店舗ごとに異なります。',
         schema: z.object({}),
         annotations: { effect: 'read' },
-        execute: async () => {
-          const { rows } = await db.query<StoreRow>(
-            'SELECT store_id, store_name, country, currency, locale FROM cofee_shop.stores ORDER BY country, store_id',
-          );
-          return rows;
-        },
+        execute: async () =>
+          traceToolCall('get_stores', {}, async () => {
+            const { rows } = await db.query<StoreRow>(
+              'SELECT store_id, store_name, country, currency, locale FROM cofee_shop.stores ORDER BY country, store_id',
+            );
+            return rows;
+          }),
       }),
 
       search_menu: tool({
@@ -181,27 +186,28 @@ export const barista = createAgent({
           is_classic: z.boolean().optional().describe('true で定番のみ'),
         }),
         annotations: { effect: 'read' },
-        execute: async (args) => {
-          const result = await searchMenu(db, serving, {
-            store_id: args.store_id,
-            query: args.query,
-            category: args.category,
-            size: args.size,
-            max_price: args.max_price,
-            limit: args.limit ?? 8,
-            max_calories: args.max_calories,
-            min_protein: args.min_protein,
-            max_fat: args.max_fat,
-            scene: args.scene,
-            tags: args.tags,
-            exclude_allergens: args.exclude_allergens,
-            seasonal: args.seasonal,
-            is_new: args.is_new,
-            is_classic: args.is_classic,
-            alt_milk: args.alt_milk,
-          });
-          return result.rows;
-        },
+        execute: async (args) =>
+          traceToolCall('search_menu', args, async () => {
+            const result = await searchMenu(db, serving, {
+              store_id: args.store_id,
+              query: args.query,
+              category: args.category,
+              size: args.size,
+              max_price: args.max_price,
+              limit: args.limit ?? 8,
+              max_calories: args.max_calories,
+              min_protein: args.min_protein,
+              max_fat: args.max_fat,
+              scene: args.scene,
+              tags: args.tags,
+              exclude_allergens: args.exclude_allergens,
+              seasonal: args.seasonal,
+              is_new: args.is_new,
+              is_classic: args.is_classic,
+              alt_milk: args.alt_milk,
+            });
+            return result.rows;
+          }),
       }),
 
       show_recommendations: tool({
@@ -216,13 +222,14 @@ export const barista = createAgent({
             .describe('最終的に推薦する商品のSKU(最大6件。search_menu の結果から正確に転記。サイズ違いは代表1件でよい)'),
         }),
         annotations: { effect: 'read' },
-        execute: async ({ store_id, skus }) => {
-          // Expand declared SKUs to all active size variants so the card
-          // shows S/M/L chips; initial_skus preserves the declared size as
-          // the pre-selected chip (e.g. an explicit "Lで" order).
-          const { items, initial_skus } = await getItemsWithVariants(db, store_id, skus);
-          return { type: 'recommend_items', items, initial_skus };
-        },
+        execute: async ({ store_id, skus }) =>
+          traceToolCall('show_recommendations', { store_id, skus }, async () => {
+            // Expand declared SKUs to all active size variants so the card
+            // shows S/M/L chips; initial_skus preserves the declared size as
+            // the pre-selected chip (e.g. an explicit "Lで" order).
+            const { items, initial_skus } = await getItemsWithVariants(db, store_id, skus);
+            return { type: 'recommend_items', items, initial_skus };
+          }),
       }),
 
       recommend_set: tool({
@@ -239,7 +246,8 @@ export const barista = createAgent({
           alt_milk: z.boolean().optional().describe('true で代替乳(オーツ/アーモンド/豆乳)変更可能なドリンクのみ'),
         }),
         annotations: { effect: 'read' },
-        execute: async ({ store_id, scene, max_calories, exclude_allergens, alt_milk }) => {
+        execute: async ({ store_id, scene, max_calories, exclude_allergens, alt_milk }) =>
+          traceToolCall('recommend_set', { store_id, scene, max_calories, exclude_allergens, alt_milk }, async () => {
           const DRINK_CATS = ['ドリップコーヒー', 'エスプレッソ', 'コールドブリュー&アイス', 'ティー&抹茶', '季節のおすすめ', 'フラッペ&ブレンデッド'];
           const FOOD_CATS = ['ペイストリー', 'サンドイッチ&フード'];
           const { rows } = await searchMenu(db, serving, {
@@ -281,7 +289,7 @@ export const barista = createAgent({
             currency: drink.currency,
             note: `${scene === 'breakfast' ? '朝食' : scene === 'lunch' ? 'ランチ' : '軽食'}向けのセットです`,
           };
-        },
+          }),
       }),
 
       get_item_details: tool({
@@ -291,11 +299,12 @@ export const barista = createAgent({
           sku: z.string().describe('search_menu の結果に含まれるSKU'),
         }),
         annotations: { effect: 'read' },
-        execute: async ({ store_id, sku }) => {
-          const row = await getActiveItem(db, store_id, sku);
-          if (!row) return { error: `SKU ${sku} はこの店舗で取り扱っていません` };
-          return row;
-        },
+        execute: async ({ store_id, sku }) =>
+          traceToolCall('get_item_details', { store_id, sku }, async () => {
+            const row = await getActiveItem(db, store_id, sku);
+            if (!row) return { error: `SKU ${sku} はこの店舗で取り扱っていません` };
+            return row;
+          }),
       }),
 
       ...coffeeTools.toolkit({ prefix: '' }),

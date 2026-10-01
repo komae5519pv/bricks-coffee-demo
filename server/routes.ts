@@ -23,6 +23,7 @@ import {
   type PreferenceMemoryRow,
 } from './lib/memory';
 import { pickImage } from './lib/images';
+import { getTracingStatus } from './lib/tracing';
 
 export interface OrderRow {
   id: string;
@@ -620,7 +621,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
             hosting: 'on-app (AppKit agents plugin, beta)',
             model_endpoint: BARISTA_MODEL,
             embedding_endpoint: process.env.EMBEDDING_ENDPOINT_NAME ?? null,
-            tracing: 'OpenTelemetry spans (AppKit execution pipeline, automatic)',
+            tracing: 'MLflow traces: 1 chat turn = 1 trace (AGENT root > LLM + TOOL spans)',
             tools: [
               'get_stores', 'search_menu', 'show_recommendations', 'recommend_set', 'get_item_details',
               'place_order', 'get_my_orders', 'get_order_board', 'update_order_status',
@@ -650,6 +651,9 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
             preferences: memPreferences,
             memories: memMemories,
           },
+          // MLflow tracing: experiment link + recent traces for the demo
+          // beat "place an order -> open the trace".
+          tracing: getTracingStatus(),
         });
       } catch (e) {
         res.status(500).json({ error: String(e) });

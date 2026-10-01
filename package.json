@@ -23,7 +23,9 @@
     "sync": "appkit plugin sync --write --silent",
     "typegen": "appkit generate-types",
     "render:appyaml": "node tools/render_app_yaml.mjs",
-    "setup": "appkit setup --write"
+    "setup": "appkit setup --write",
+    "eval": "uv run tools/eval_barista.py",
+    "eval:smoke": "uv run tools/eval_barista.py --smoke"
   },
   "keywords": [],
   "author": "",
@@ -33,6 +35,8 @@
     "@databricks/appkit": "0.57.0",
     "@databricks/appkit-ui": "0.57.0",
     "@databricks/sdk-experimental": "0.17.0",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/sdk-trace-base": "2.8.0",
     "clsx": "file:vendor/clsx-2.1.1.tgz",
     "d3-dispatch": "file:vendor/d3-dispatch-3.0.1.tgz",
     "d3-drag": "file:vendor/d3-drag-3.0.0.tgz",
@@ -43,6 +47,7 @@
     "lodash.camelcase": "file:vendor/lodash.camelcase-4.3.0.tgz",
     "lodash.merge": "file:vendor/lodash.merge-4.6.2.tgz",
     "lucide-react": "0.546.0",
+    "mlflow-tracing": "file:vendor/mlflow-tracing-0.1.3.tgz",
     "next-themes": "0.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -64,6 +69,9 @@
     "@eslint/js": "9.39.1",
     "@tailwindcss/postcss": "4.1.17",
     "@tailwindcss/vite": "4.1.17",
+    "@types/d3-selection": "file:vendor/types-d3-selection-3.0.11.tgz",
+    "@types/d3-transition": "file:vendor/types-d3-transition-3.0.9.tgz",
+    "@types/d3-zoom": "file:vendor/types-d3-zoom-3.0.1.tgz",
     "@types/express": "5.0.5",
     "@types/node": "24.6.0",
     "@types/react": "19.2.2",
@@ -85,10 +93,7 @@
     "typescript-eslint": "8.48.0",
     "vite": "npm:rolldown-vite@7.1.14",
     "vitest": "4.1.9",
-    "yaml": "file:vendor/yaml-2.9.0.tgz",
-    "@types/d3-zoom": "file:vendor/types-d3-zoom-3.0.1.tgz",
-    "@types/d3-selection": "file:vendor/types-d3-selection-3.0.11.tgz",
-    "@types/d3-transition": "file:vendor/types-d3-transition-3.0.9.tgz"
+    "yaml": "file:vendor/yaml-2.9.0.tgz"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.1.14",
@@ -156,6 +161,11 @@
     "d3-drag": "file:vendor/d3-drag-3.0.0.tgz",
     "d3-selection": "file:vendor/d3-selection-3.0.0.tgz",
     "d3-transition": "file:vendor/d3-transition-3.0.1.tgz",
-    "d3-zoom": "file:vendor/d3-zoom-3.0.0.tgz"
+    "d3-zoom": "file:vendor/d3-zoom-3.0.0.tgz",
+    "fast-safe-stringify": "file:vendor/fast-safe-stringify-2.1.1.tgz",
+    "mlflow-tracing": "file:vendor/mlflow-tracing-0.1.3.tgz",
+    "ini@^5.0.0": "file:vendor/mlflow-tracing--ini-5.0.0.tgz",
+    "@opentelemetry/sdk-node": "0.219.0",
+    "@databricks/sdk-experimental": "0.17.0"
   }
 }

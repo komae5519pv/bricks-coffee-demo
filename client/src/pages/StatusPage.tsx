@@ -218,6 +218,74 @@ export function StatusPage() {
             <Row label="SQL ウェアハウス" value={data?.config.warehouse_id} mono />
           </CardContent>
         </Card>
+
+        {/* MLflow tracing: experiment link + recent traces (demo beat:
+            place an order in chat, then open its trace here) */}
+        <Card>
+          <CardContent className="p-4 space-y-1">
+            <h3 className="font-medium text-sm flex items-center gap-2 pb-2">
+              <Timer className="h-4 w-4" /> MLflow トレーシング (バリスタエージェント)
+              <span className="ml-auto">
+                {data && (
+                  <Badge ok={data.tracing.enabled} label={data.tracing.enabled ? '記録中' : '無効'} />
+                )}
+              </span>
+            </h3>
+            {data?.tracing.reason && !data.tracing.enabled && (
+              <div className="text-xs text-red-600 break-all">{data.tracing.reason}</div>
+            )}
+            <Row
+              label="エクスペリメント"
+              value={
+                data?.tracing.experiment_url ? (
+                  <a
+                    href={data.tracing.experiment_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    {data.tracing.experiment_name}
+                  </a>
+                ) : (
+                  (data?.tracing.experiment_name ?? '-')
+                )
+              }
+              mono
+            />
+            <Row label="トレース構造" value="1会話ターン = 1トレース (AGENT > LLM + TOOL)" />
+            <div className="pt-2">
+              <div className="text-xs text-muted-foreground pb-1">最近のトレース (このプロセスが記録したもの)</div>
+              {!data || data.tracing.recent_traces.length === 0 ? (
+                <div className="text-xs text-muted-foreground">まだトレースがありません — チャットで注文するとここに出ます</div>
+              ) : (
+                <ul className="space-y-1">
+                  {data.tracing.recent_traces.slice(0, 6).map((t) => (
+                    <li key={t.trace_id} className="flex items-center gap-2 text-xs font-mono">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full shrink-0 ${t.status === 'OK' ? 'bg-green-600' : t.status === 'ERROR' ? 'bg-red-600' : 'bg-yellow-500'}`}
+                      />
+                      <span className="text-muted-foreground shrink-0">{fmtAgo(t.started_at, now)}</span>
+                      <span className="truncate">{t.name}</span>
+                      {t.duration_ms != null && (
+                        <span className="text-muted-foreground shrink-0">{(t.duration_ms / 1000).toFixed(1)}s</span>
+                      )}
+                      {t.url && (
+                        <a
+                          href={t.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-auto inline-flex items-center gap-0.5 text-blue-600 hover:underline shrink-0"
+                        >
+                          開く <ArrowRight className="h-3 w-3" />
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Agent memory: what the barista remembers about the current user */}

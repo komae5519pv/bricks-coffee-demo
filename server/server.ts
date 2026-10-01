@@ -13,7 +13,15 @@ import { CoffeeToolsPlugin, setCoffeeToolsDb } from './plugins/coffee-tools';
 import { createLakebaseThreadStore, setThreadStoreDb } from './lib/thread-store';
 import { initializeDatabase } from './db';
 import { registerCoffeeRoutes } from './routes';
+import { initTracing, flushTracing } from './lib/tracing';
 import type { EmbeddingsInvoker } from './lib/embed';
+
+// MLflow tracing for the barista agent. Must complete before the first chat
+// request (spans created before a backend exists are simply untraced, so this
+// is best-effort); failures disable tracing, never the app (see tracing.ts).
+await initTracing();
+process.on('SIGTERM', () => void flushTracing());
+process.on('beforeExit', () => void flushTracing());
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- runtime value unused; kept for the exported type
 const appkit = await createApp({

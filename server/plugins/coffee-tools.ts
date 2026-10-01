@@ -26,6 +26,7 @@ import { z } from 'zod';
 import { insertOrder, priceCart, type DbLike, type MenuRow } from '../lib/menu';
 import { listMemories, listPreferences, rememberFact, MEMORY_KINDS } from '../lib/memory';
 import { recordCommit } from '../lib/status';
+import { traceToolCall } from '../lib/tracing';
 
 interface OrderRow {
   id: string;
@@ -347,6 +348,8 @@ export class CoffeeToolsPlugin extends Plugin {
   }
 
   async executeAgentTool(name: string, args: unknown, signal?: AbortSignal): Promise<unknown> {
-    return executeFromRegistry(this.registry, name, args, signal);
+    // Single dispatch point for every toolkit tool — one TOOL span per call
+    // in the MLflow trace of the current chat turn (no-op outside a turn).
+    return traceToolCall(name, args, () => executeFromRegistry(this.registry, name, args, signal));
   }
 }

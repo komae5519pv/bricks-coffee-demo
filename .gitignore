@@ -13,3 +13,6 @@ playwright-report/
 shared/appkit-types/serving.d.ts
 
 .image-audit/
+
+# Eval harness local smoke-run store (tools/eval_barista.py --smoke)
+mlflow-eval-smoke.db

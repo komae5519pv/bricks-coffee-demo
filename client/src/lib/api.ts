@@ -189,6 +189,24 @@ export interface MemoryEntry {
   updated_at: string;
 }
 
+export interface TracingRecentTrace {
+  trace_id: string;
+  name: string;
+  url: string | null;
+  started_at: string;
+  duration_ms: number | null;
+  status: 'OK' | 'ERROR' | 'IN_PROGRESS';
+}
+
+export interface TracingStatus {
+  enabled: boolean;
+  reason: string | null;
+  experiment_name: string | null;
+  experiment_id: string | null;
+  experiment_url: string | null;
+  recent_traces: TracingRecentTrace[];
+}
+
 export interface StatusResponse {
   agent: {
     name: string;
@@ -203,6 +221,7 @@ export interface StatusResponse {
     preferences: MemoryPreference[];
     memories: MemoryEntry[];
   };
+  tracing: TracingStatus;
   obo: {
     forwarded_user: string | null;
     forwarded_email: string | null;

@@ -187,6 +187,92 @@ memory entry (actor_id + content) ≈ user_memories (user_email + content) + cus
 - Managed agent sessions: https://docs.databricks.com/aws/en/agents/agent-memory/managed-sessions
 - Managed agent memory: https://docs.databricks.com/aws/en/agents/agent-memory/managed-memory
 
+## MLflow トレーシング & 評価 (バリスタエージェント)
+
+本番エージェントの可観測性ストーリー。**1会話ターン = 1 MLflow トレース**として、
+Databricks ホストの MLflow エクスペリメントに記録される(デフォルト
+`/Shared/daiwt-coffee-shop-barista`、`MLFLOW_EXPERIMENT_NAME` で変更可)。
+
+### トレース構造
+
+```
+barista.turn (AGENT, ルート)        inputs: ユーザーメッセージ / outputs: 最終応答+ツール呼出名
+├── llm databricks-kimi-k3 (CHAT_MODEL)  モデル呼出ごと。inputs: リクエスト / outputs: ストリーム復元テキスト
+├── search_menu (TOOL)              ツール実行ごと。inputs: 引数 / outputs: 結果(4KB で切り詰め)
+├── recommend_set (TOOL)
+└── ...
+```
+
+- 実装は `server/lib/tracing.ts`。フック点は2箇所+ツールラッパ:
+  アダプタの `run()`(ルートスパン)、アダプタの公開フィールド `streamBody`(LLM スパン。
+  SSE をパススルーしつつ内容を復元)、各ツール execute(TOOL スパン。toolkit は
+  `CoffeeToolsPlugin.executeAgentTool` の一箇所で全ツールをカバー)
+- スパン連携は AsyncLocalStorage。承認ゲート(HITL)で停止してもコンテキストは維持される
+
+### 公式 TS SDK (mlflow-tracing) の評価結果
+
+公式 `mlflow-tracing` v0.1.3 を採用しているが、**その `init()`/`withSpan` は使っていない**。
+理由: SDK の `init()` は内部で OTel NodeSDK を起動しグローバルトレーサープロバイダを奪う。
+AppKit も NodeSDK を持つ(プラットフォームの OTLP テレメトリ)ため先着1個しか登録できず、
+MLflow が勝てば AppKit の HTTP スパンが実験に「トレース」として流入して汚染され、
+AppKit が勝てば MLflow スパンが無音で no-op になる。そこで SDK の部品
+(MlflowClient / MlflowSpanExporter / trace manager / エンティティ)だけを再利用し、
+非グローバルの専用 TracerProvider + 明示スパンで駆動している(詳細は tracing.ts 冒頭コメント)。
+Databricks 認証(プロファイル/OAuth M2M)は SDK の auth モジュールをそのまま利用。
+
+### ステータスページ連携
+
+`/api/status` とステータスページに「MLflow トレーシング」カードを追加。エクスペリメントへの
+リンク + 最近のトレース(クリックで該当トレースを開ける)を表示する。
+
+### 評価ハーネス (`npm run eval`)
+
+`tools/eval_barista.py` + 10シナリオのゴールデンデータセット(`tools/eval_barista_golden.json`:
+アレルギー制約つき推薦、カロリー上限セット、リオーダー、記憶の想起/保存同意、
+スタッフ機能の拒否、注文確認フロー、店舗一覧、栄養検索)。シナリオは全て読み取り系で、
+破壊的操作は「拒否されること」側を検証する設計(本番データを汚さない)。
+
+```bash
+npm run dev        # 別ターミナルでアプリを起動
+npm run eval       # 本実行: アプリに実問い合わせ → mlflow.genai.evaluate → 実験に記録
+npm run eval:smoke # 密閉ドライラン: ワークスペース不要。データセットの缶詰応答で
+                   # 決定論スコアラの配線と集約を検証(ローカル sqlite ストア)
+```
+
+スコアラ3本:
+
+1. **tool_call_correctness**(決定論) — 必須ツールの呼出・禁止ツールの非呼出・
+   ツール引数制約(例: search_menu が exclude_allergens=["milk"] 付きで呼ばれたか)
+2. **response_requirements**(決定論) — must_mention 文字列(例: "kcal")の応答内含むか
+3. **rubric_compliance**(LLM ジャッジ, make_judge) — シナリオごとのルーブリックを
+   0.0-1.0 で採点。ジャッジモデルは `BARISTA_EVAL_JUDGE_MODEL`(デフォルト
+   databricks:/databricks-meta-llama-3-3-70b-instruct、structured outputs 対応が必須)
+
+結果の見方: ワークスペース MLflow UI → エクスペリメント → **Evaluations タブ**。
+実行ごとの集約メトリクスと、サンプルごとのスコア・根拠(rationale)・トレースが見える。
+
+### デモの一拍
+
+1. チャットで注文(例:「牛乳アレルギーなんだけどおすすめは?」→ 確認 → 注文確定)
+2. ステータスページの「最近のトレース」から該当トレースを開く →
+   LLM/ツールの各スパン(引数・結果・所要時間)が見える
+3. `npm run eval` を実行 → Evaluations タブで10シナリオのスコアを見せる
+   (「本番エージェントの品質を継続評価する仕組み」として)
+
+### MLflow 落とし穴(実測由来・対応済み)
+
+1. **UC トレース宛先はプロデューサー側の設定**。エクスペリメントと UC スキーマを
+   リンクするだけでは UC に入らない。Python では `mlflow.tracing.set_destination(...)`
+   だが TS SDK v0.1.3 に相当 API が無いため、本アプリのトレースはエクスペリメント行き。
+   UC 側の準備スキーマ作成と Python 側の設定例は `tools/setup_mlflow_uc_traces.py` に集約
+2. **make_judge の集約欠落対策**。フィードバックの型を推論任せにすると集約から
+   落ちる事案があった(bool 型で実害)。`feedback_value_type=float` を明示し、
+   決定論スコアラも数値(1.0/0.0)を返す設計。smoke モードが集約の存在をゲートする
+3. **CREATE OR REPLACE 禁止**。UC オブジェクトの再作成は権限を落とす。セットアップは
+   全て `CREATE ... IF NOT EXISTS` + 個別 GRANT、実験 ACL も PUT ではなく PATCH(追加)
+4. **UC から再取得したトレースの span.inputs/outputs は JSON 文字列**。dict 前提で
+   扱わず `json.loads()` してから使うこと(setup スクリプトの docstring にも明記)
+
 ## Lakebase リアルタイム演示 (書込み → コミット → Delta 反映)
 
 「普段のUIには痕跡を残さず、イベントが起きた瞬間だけ光る」原則で、注文のライブ感を3箇所に仕込んである。
