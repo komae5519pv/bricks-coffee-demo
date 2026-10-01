@@ -14,6 +14,14 @@ import type { EmbeddingsInvoker } from './lib/embed';
 import { searchMenu, priceCart, insertOrder, reembedItems, syncMenuItemToDelta, deleteMenuItemFromDelta, type DbLike } from './lib/menu';
 import { getDeltaSyncStatus, getLakebaseStatus, getOrderEvents, recordCommit } from './lib/status';
 import { browse, listBrowseTables } from './lib/browse';
+import {
+  listMemories,
+  listMemorySessions,
+  listPreferences,
+  type MemoryRow,
+  type MemorySessionRow,
+  type PreferenceMemoryRow,
+} from './lib/memory';
 import { pickImage } from './lib/images';
 
 export interface OrderRow {
@@ -585,6 +593,27 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           .replace(/\/$/, '')
           .replace(/^(?!https?:\/\/)/, 'https://');
         const genieSpaceId = process.env.GENIE_SPACE_ID ?? '';
+        // Agent memory card: short-term (chat sessions) + long-term
+        // (preferences + free-form memories), all scoped to the caller.
+        // Sessions use the x-forwarded-user ownership key via the SP pool
+        // (same key the ThreadStore writes); preferences/memories go OBO
+        // (current_user). Without an OBO token (local dev) the long-term
+        // side is simply empty — the status page must not 500.
+        const fwdUser = req.headers['x-forwarded-user'];
+        const statusUserId = (Array.isArray(fwdUser) ? fwdUser[0] : fwdUser) ?? null;
+        let sessions: MemorySessionRow[] = [];
+        let memPreferences: PreferenceMemoryRow[] = [];
+        let memMemories: MemoryRow[] = [];
+        if (statusUserId) {
+          sessions = await listMemorySessions(spDb, statusUserId).catch(() => []);
+        }
+        try {
+          const uDb = userDb(req);
+          [memPreferences, memMemories] = await Promise.all([listPreferences(uDb), listMemories(uDb)]);
+        } catch {
+          memPreferences = [];
+          memMemories = [];
+        }
         res.json({
           agent: {
             name: 'barista',
@@ -593,9 +622,10 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
             embedding_endpoint: process.env.EMBEDDING_ENDPOINT_NAME ?? null,
             tracing: 'OpenTelemetry spans (AppKit execution pipeline, automatic)',
             tools: [
-              'get_stores', 'search_menu', 'show_recommendations', 'get_item_details', 'place_order',
-              'get_my_orders', 'get_order_board', 'update_order_status',
-              'get_my_preferences', 'save_preference',
+              'get_stores', 'search_menu', 'show_recommendations', 'recommend_set', 'get_item_details',
+              'place_order', 'get_my_orders', 'get_order_board', 'update_order_status',
+              'get_my_preferences', 'save_preference', 'get_my_memories', 'remember_fact',
+              'get_my_frequent_items', 'reorder_last',
             ],
           },
           obo: {
@@ -615,6 +645,11 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           },
           lakebase,
           delta_sync: delta,
+          memory: {
+            sessions,
+            preferences: memPreferences,
+            memories: memMemories,
+          },
         });
       } catch (e) {
         res.status(500).json({ error: String(e) });

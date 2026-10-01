@@ -117,6 +117,26 @@ CREATE TABLE IF NOT EXISTS cofee_shop.customer_preferences (
   PRIMARY KEY (user_email, preference_key)
 );
 
+-- Long-term agent memory: free-form durable facts the barista saves with
+-- the user's consent (remember_fact tool). The structured key/value profile
+-- (allergies etc.) stays in customer_preferences; this table holds what
+-- does not fit key/value. Owner = OBO current_user (email form), enforced
+-- by RLS + explicit owner filters (same pattern as customer_preferences).
+CREATE TABLE IF NOT EXISTS cofee_shop.user_memories (
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_email TEXT NOT NULL,
+  kind       TEXT NOT NULL DEFAULT 'fact'
+             CHECK (kind IN ('allergy','preference','habit','order_pattern','fact')),
+  content    TEXT NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'agent'
+             CHECK (source IN ('agent','user')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_email, content)
+);
+
+CREATE INDEX IF NOT EXISTS user_memories_user_idx ON cofee_shop.user_memories (user_email, updated_at);
+
 -- Barista chat conversation persistence (ThreadStore backing).
 -- Ownership key: the platform's x-forwarded-user value (what the agents
 -- plugin resolves as the thread userId). RLS is default-deny for per-user
@@ -197,6 +217,16 @@ CREATE POLICY preferences_staff_read ON cofee_shop.customer_preferences
   FOR SELECT
   USING (EXISTS (SELECT 1 FROM cofee_shop.staff s WHERE s.email = current_user));
 
+-- Long-term memory is strictly owner-only (no staff read: it holds
+-- conversation-derived personal facts, not operational data).
+ALTER TABLE cofee_shop.user_memories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS user_memories_owner ON cofee_shop.user_memories;
+CREATE POLICY user_memories_owner ON cofee_shop.user_memories
+  FOR ALL
+  USING (user_email = current_user)
+  WITH CHECK (user_email = current_user);
+
 ALTER TABLE cofee_shop.chat_threads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cofee_shop.chat_messages ENABLE ROW LEVEL SECURITY;
 
@@ -254,6 +284,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.menu_items TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON cofee_shop.orders TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON cofee_shop.order_items TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.customer_preferences TO PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.user_memories TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON cofee_shop.chat_threads TO PUBLIC;
 GRANT SELECT, INSERT, DELETE ON cofee_shop.chat_messages TO PUBLIC;
 `;
@@ -286,6 +317,18 @@ VALUES
   ('konomi.omae@databricks.com', 'milk_allergy', 'true', '牛乳アレルギー。乳成分(ミルク・ホイップ・クリーム系)を避ける'),
   ('konomi.omae@databricks.com', 'likes', 'matcha, espresso', '抹茶系とエスプレッソ系が好み')
 ON CONFLICT (user_email, preference_key) DO NOTHING;
+`;
+
+/**
+ * Demo long-term memories, as if the barista had extracted them from past
+ * conversations — the status page memory card is non-empty out of the box.
+ */
+const MEMORIES_SEED = `
+INSERT INTO cofee_shop.user_memories (user_email, kind, content, source)
+VALUES
+  ('konomi.omae@databricks.com', 'habit', 'いつも抹茶ラテのMサイズを頼む', 'agent'),
+  ('konomi.omae@databricks.com', 'preference', '甘さ控えめが好み', 'agent')
+ON CONFLICT (user_email, content) DO NOTHING;
 `;
 
 function chunked<T>(arr: readonly T[], size: number): T[][] {
@@ -470,6 +513,7 @@ export async function initializeDatabase(db: BootstrapDb, serving: EmbeddingsInv
   await db.query(GRANTS);
   await db.query(STAFF_SEED);
   await db.query(PREFERENCES_SEED);
+  await db.query(MEMORIES_SEED);
   await db.query(CDC_REPLICA_IDENTITY);
   await db.query(IMAGE_COLUMNS_MIGRATION);
   await db.query(STORE_GEO_MIGRATION);

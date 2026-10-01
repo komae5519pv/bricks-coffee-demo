@@ -51,6 +51,11 @@ const BROWSE_TABLES: Record<string, BrowseDef> = {
     table: 'cofee_shop.customer_preferences', orderBy: 'updated_at DESC',
     searchable: ['preference_key', 'preference_value'],
   },
+  'lakebase:user_memories': {
+    source: 'lakebase', label: 'user_memories（長期記憶・本人分）', scope: 'user',
+    table: 'cofee_shop.user_memories', orderBy: 'updated_at DESC',
+    searchable: ['kind', 'content'],
+  },
   'lakebase:chat_threads': {
     source: 'lakebase', label: 'chat_threads（会話・本人分）', scope: 'sp-userid',
     table: 'cofee_shop.chat_threads', orderBy: 'updated_at DESC',

@@ -168,6 +168,27 @@ export interface ChatThreadSummary {
   }[];
 }
 
+export interface MemorySession {
+  id: string;
+  title: string;
+  message_count: string;
+  updated_at: string;
+}
+
+export interface MemoryPreference {
+  preference_key: string;
+  preference_value: string;
+  note: string;
+}
+
+export interface MemoryEntry {
+  id: number;
+  kind: string;
+  content: string;
+  source: string;
+  updated_at: string;
+}
+
 export interface StatusResponse {
   agent: {
     name: string;
@@ -176,6 +197,11 @@ export interface StatusResponse {
     embedding_endpoint: string | null;
     tracing: string;
     tools: string[];
+  };
+  memory: {
+    sessions: MemorySession[];
+    preferences: MemoryPreference[];
+    memories: MemoryEntry[];
   };
   obo: {
     forwarded_user: string | null;

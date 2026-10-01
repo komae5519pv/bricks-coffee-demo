@@ -52,6 +52,7 @@ LLM: databricks-kimi-k3 (FMAPI OSS pay-per-token) / 埋め込み: databricks-qwe
 | order_items | 注文明細 | lb_order_items_history → ビュー order_items |
 | historical_orders | 過去注文 7,284行(分析用) | lb_historical_orders_history → ビュー historical_orders |
 | customer_preferences | 嗜好(milk_allergy 等) | lb_customer_preferences_history → ビュー customer_preferences |
+| user_memories | 長期記憶(自由記述・バリスタが同意取得で保存) | **CDC 非対象** |
 | staff | スタッフ(RLS 判定用) | lb_staff_history (Genie には非公開) |
 | chat_threads | バリスタ会話スレッド(owner=user_email) | **CDC 非対象** |
 | chat_messages | 会話メッセージ(thread_id FK・ON DELETE CASCADE) | **CDC 非対象** |
@@ -61,7 +62,7 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
 型変更は CDC の resnapshot を引くので、**resnapshot 後は Delta 側ビューを CREATE OR REPLACE で
 作り直すこと**(tools/setup_delta.py を再実行すればよい)。
 
-**chat_threads/chat_messages の REPLICA IDENTITY FULL**: wal2delta で SKIPPED(REPLICA IDENTITY FULL 未設定)だが、会話の Delta 同期要件は現時点でないため現状維持。Delta 側で会話を分析したくなったら REPLICA IDENTITY FULL を設定して CDC 対象に加える。
+**chat_threads/chat_messages/user_memories の REPLICA IDENTITY FULL**: wal2delta で SKIPPED(REPLICA IDENTITY FULL 未設定)だが、会話・記憶の Delta 同期要件は現時点でないため現状維持。Delta 側で分析したくなったら REPLICA IDENTITY FULL を設定して CDC 対象に加える。
 
 ## 商品画像 (Unsplash)
 
@@ -125,6 +126,67 @@ agents プラグインの ThreadStore を Lakebase 実装に差し替えてい�
   ツールを使わなかった回答への安全網として、探索途中の検索結果はターン内でバッファし、最終回答テキストに
   正式名称が登場する商品だけを回答後にカード化する(探索の中間結果がカードに残らない)
 
+## エージェントメモリ (Lakebase)
+
+バリスタは **短期メモリ(会話セッション)** と **長期記憶(嗜好 + 保存した事実)** の2層を持ち、
+どちらもアプリ自身の Lakebase プロジェクト上のテーブルに永続化される。アプリを再起動しても
+会話の続きが話せ、別の会話でも「いつもの」を覚えている —— 「エージェントの記憶も運用DBに置く」
+物語を、注文と同じ OBO + RLS の枠組みで見せる。
+
+**短期メモリ — 会話セッション (chat_threads / chat_messages)**
+
+- AppKit agents プラグインの ThreadStore を Lakebase 実装に差し替え(server/lib/thread-store.ts)。
+  全メッセージが INSERT され、アプリ再起動・別デバイスからも会話を再開できる
+- 所有者キーはプラットフォームの `x-forwarded-user`(スレッド単位)。全クエリが user_email 明示
+  フィルタ + chat テーブルの RLS は per-user プールに対し default-deny(実行はアプリ SP プール)で、
+  他人の会話は読み書き・削除とも不可
+
+**長期記憶 — 嗜好 (customer_preferences) + 記憶 (user_memories)**
+
+- `customer_preferences` は構造化プロファイル(milk_allergy=true 等の key/value)。CDC → Delta で
+  Genie も参照する既存のパーソナライズ基盤
+- `user_memories` は自由記述の永続メモリ(例:「いつもオーツミルクラテのMを頼む」「甘さ控えめが好み」)。
+  key/value に収まらない事実を kind(allergy/preference/habit/order_pattern/fact)付きで保持
+- 取得は `get_my_memories` ツール(嗜好+記憶をまとめて返す。提案前・会話開始時にエージェントが確認)、
+  保存は `remember_fact` ツール(自由記述)と `save_preference` ツール(構造化嗜好)。どちらも
+  **effect=write の承認ゲート付き**で、会話でユーザーの同意を得た時だけ実行される(place_order と同じ
+  human-in-the-loop)。ツールは OBO 実行なので current_user=本人、RLS + 明示 owner フィルタで本人分のみ
+- **明示保存(explicit)を選んだ理由**: 会話からの自動抽出(derived)は裏側の抽出ロジックがブラックボックス
+  になり、デモで「何が・いつ記憶されたか」を説明しにくい。明示保存なら「保存してよいですか?→承認→
+  ステータスページに記憶が出る」という1本の演示フローになり、既存の注文承認ゲートと物語が揃う
+
+**可視化 (デモで「記憶が見える」ように)**
+
+- **ステータスページ「エージェントメモリ (Lakebase)」カード**: 本人の会話セッション一覧(タイトル・
+  メッセージ数・更新時刻)と長期記憶(嗜好 + 記憶)を10秒ポーリングで表示。remember_fact で保存すると
+  数秒以内にカードに現れる
+- **データブラウザ**: user_memories / chat_threads / chat_messages / customer_preferences を本人分
+  スコープで実テーブルの行として参照できる(「記憶 = Lakebase の行」をそのまま見せる)
+
+**公式 Managed agent sessions / memory との関係 (設計判断)**
+
+Databricks 公式の提供形態は **Managed agent sessions**(短期)と **Managed agent memory**(長期)の
+2本(いずれも Beta・Lakebase バックエンド・framework-agnostic・カスタム Apps ホスト型エージェントから
+REST(`/api/2.0/agents/session-stores` / `/api/2.0/agents/memory-stores`)で直接利用可)。
+
+本デモは **自前テーブル実装** を選択した:
+
+1. 短期側は既に Lakebase ThreadStore として実装・検証済みで、移行の実益がない
+2. マネージド版のストアはワークスペーススコープの Databricks 管理 Lakebase インスタンスに置かれ、
+   アプリ自身の Lakebase プロジェクトの行としては見えない。デモの肝である「ステータスページの
+   データブラウザで実データを見せる」「注文と同じ OBO + RLS の枠組みで語る」と相性が悪い
+3. Beta の REST はガイドの curl 例が唯一の仕様で、SDK 表面が未安定
+
+概念は公式モデルに対応させてある: session ≈ chat_threads、session item ≈ chat_messages、
+memory entry (actor_id + content) ≈ user_memories (user_email + content) + customer_preferences。
+本番で新規に組むなら公式 Managed(Beta)が推奨筋。
+
+出典(docs.databricks.com、2026-09-29/30 更新版で確認):
+
+- Agent memory and sessions: https://docs.databricks.com/aws/en/agents/custom-agents/stateful-agents
+- Managed agent sessions: https://docs.databricks.com/aws/en/agents/agent-memory/managed-sessions
+- Managed agent memory: https://docs.databricks.com/aws/en/agents/agent-memory/managed-memory
+
 ## Lakebase リアルタイム演示 (書込み → コミット → Delta 反映)
 
 「普段のUIには痕跡を残さず、イベントが起きた瞬間だけ光る」原則で、注文のライブ感を3箇所に仕込んである。
@@ -175,6 +237,9 @@ OBO で「誰がアクセスしたか」を認識し、権限で見える画面�
    商品をカートに入れて注文。「マイ注文」に即反映(Lakebase)。
 2. **AI バリスタに注文** — 「東京駅前店でアイスコーヒーのMを1つ」→ 確認 → **承認ゲート**を承認。
    channel=chat で Lakebase に書き込まれる。アレルギーを伝えると save_preference の提案→保存も見せられる。
+   続けて「いつもオーツミルクラテなんだよね」と伝えると remember_fact の提案 → 承認で長期記憶に保存。
+   ステータスページの「エージェントメモリ」カードに数秒で現れ、**新しい会話を開いて**「おすすめは?」と
+   聞くと get_my_memories で記憶を参照した提案になる(会話を跨ぐ長期記憶の演示)。
 3. **CDC のライブ感** — ステータスページの「Lakebase → Delta レプリケーション遅延」が
    0〜数秒であること、wal2delta が STREAMING であることを見せる(定常の実測 0.002〜0.6秒)。
    注文直後はトーストの「このレコードを見る」からイベントログへ飛び、書込み → コミット →

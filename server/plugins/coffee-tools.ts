@@ -24,6 +24,7 @@ import {
 } from '@databricks/appkit/beta';
 import { z } from 'zod';
 import { insertOrder, priceCart, type DbLike, type MenuRow } from '../lib/menu';
+import { listMemories, listPreferences, rememberFact, MEMORY_KINDS } from '../lib/memory';
 import { recordCommit } from '../lib/status';
 
 interface OrderRow {
@@ -220,6 +221,40 @@ function buildRegistry(): ToolRegistry {
           [preference_key, preference_value, note ?? ''],
         );
         return { ...rows[0], message: '嗜好を保存しました' };
+      },
+    }),
+
+    get_my_memories: defineTool({
+      description:
+        'このユーザーに関する長期記憶(構造化された嗜好 + 過去の会話から保存した自由記述の記憶)をまとめて取得します。会話の最初、およびおすすめ・提案を求められた時は必ずこれで記憶を確認してください。',
+      schema: z.object({}),
+      annotations: { effect: 'read' },
+      execute: async () => {
+        const [preferences, memories] = await Promise.all([listPreferences(requireDb()), listMemories(requireDb())]);
+        if (preferences.length === 0 && memories.length === 0) return { message: '保存されている記憶はありません' };
+        return { preferences, memories };
+      },
+    }),
+
+    remember_fact: defineTool({
+      description:
+        'ユーザーの永続的な事実(いつもの注文・習慣・好み・事情)を長期記憶としてデータベースに保存します。会話で言及があり、ユーザーが保存に同意した場合にのみ使用。アレルギー等の構造化できる嗜好は save_preference、自由記述の記憶はこのツールを使います。',
+      schema: z.object({
+        kind: z
+          .enum(MEMORY_KINDS)
+          .describe(
+            '記憶の種類: allergy=アレルギー / preference=好み / habit=習慣・いつもの行動 / order_pattern=注文パターン / fact=その他の事実',
+          ),
+        content: z
+          .string()
+          .min(1)
+          .max(300)
+          .describe('保存する記憶の内容(日本語の自然文1文。例: いつもオーツミルクラテのMを頼む)'),
+      }),
+      annotations: { effect: 'write' },
+      execute: async ({ kind, content }) => {
+        const row = await rememberFact(requireDb(), kind, content);
+        return { ...row, message: '長期記憶に保存しました。次回以降の会話でも参照します。' };
       },
     }),
 

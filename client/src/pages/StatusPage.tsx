@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Card, CardContent } from '@databricks/appkit-ui/react';
-import { Activity, ArrowRight, Bot, CheckCircle2, Database, KeyRound, ListOrdered, RefreshCw, Sparkles, Timer } from 'lucide-react';
+import { Activity, ArrowRight, Bot, Brain, CheckCircle2, Database, KeyRound, ListOrdered, RefreshCw, Sparkles, Timer } from 'lucide-react';
 import { api, fmtPrice, type OrderEvent, type StatusResponse } from '../lib/api';
 import { fmtAgo, useNow } from '../lib/use-now';
 import { ArchDiagram } from '../components/status/ArchDiagram';
@@ -28,6 +28,14 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
     </span>
   );
 }
+
+const MEMORY_KIND_LABELS: Record<string, string> = {
+  allergy: 'アレルギー',
+  preference: '好み',
+  habit: '習慣',
+  order_pattern: '注文パターン',
+  fact: '事実',
+};
 
 /** Architecture / runtime status page shown during the demo. */
 export function StatusPage() {
@@ -211,6 +219,64 @@ export function StatusPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Agent memory: what the barista remembers about the current user */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <h3 className="font-medium text-sm flex items-center gap-2">
+            <Brain className="h-4 w-4" /> エージェントメモリ (Lakebase)
+            <span className="ml-auto text-xs font-normal text-muted-foreground">本人分のみ · 10秒ごと自動更新</span>
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            バリスタがあなたについて覚えていること。短期メモリ(会話セッション)と長期記憶(嗜好 + 保存した事実)は
+            どちらも Lakebase 上のテーブルに永続化され、アプリ再起動後も残ります。長期記憶は会話で同意した時だけ
+            保存されます (remember_fact / save_preference は承認ゲート付き)。
+          </p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Short-term: chat sessions */}
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-muted-foreground">
+                短期メモリ — 会話セッション (chat_threads)
+              </div>
+              {!data || data.memory.sessions.length === 0 ? (
+                <div className="text-xs text-muted-foreground">まだ会話セッションがありません</div>
+              ) : (
+                data.memory.sessions.map((s) => (
+                  <div key={s.id} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs">
+                    <span className="min-w-0 flex-1 truncate font-medium">{s.title || '(無題の会話)'}</span>
+                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5">{s.message_count}件</span>
+                    <span className="shrink-0 text-muted-foreground">{fmtAgo(s.updated_at, now)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+            {/* Long-term: structured preferences + free-form memories */}
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-muted-foreground">
+                長期記憶 — 嗜好 (customer_preferences) + 記憶 (user_memories)
+              </div>
+              {data && data.memory.preferences.length === 0 && data.memory.memories.length === 0 && (
+                <div className="text-xs text-muted-foreground">保存されている長期記憶はありません</div>
+              )}
+              {data?.memory.preferences.map((p) => (
+                <div key={p.preference_key} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs">
+                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono">{p.preference_key}</span>
+                  <span className="min-w-0 flex-1 truncate">{p.preference_value}</span>
+                </div>
+              ))}
+              {data?.memory.memories.map((m) => (
+                <div key={m.id} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs">
+                  <span className="shrink-0 rounded bg-primary/10 text-primary px-1.5 py-0.5">
+                    {MEMORY_KIND_LABELS[m.kind] ?? m.kind}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{m.content}</span>
+                  <span className="shrink-0 text-muted-foreground">{fmtAgo(m.updated_at, now)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Genie */}
       <Card>
