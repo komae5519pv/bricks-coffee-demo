@@ -30,11 +30,15 @@ Unity Catalog の Delta テーブルに複製され、Genie がそれを分析�
        ├─ UC Delta: konomi_demo_catalog.cofee_shop.lb_*_history  … SCD2 変更履歴
        │     ▼  最新状態ビュー (orders 等) + menu_items (Delta 複製)
        └─ Genie スペース  … 過去履歴の分析・嗜好を踏まえた提案 (Serverless WH)
-LLM: databricks-claude-sonnet-4-5 / 埋め込み: databricks-qwen3-embedding-0-6b
+LLM: databricks-kimi-k3 (FMAPI OSS pay-per-token) / 埋め込み: databricks-qwen3-embedding-0-6b
 ```
 
 - エージェントはモデルサービングではなく**アプリ内ホスト**(AppKit agents プラグイン, beta)。
   書き込み系ツールは承認ゲート(human-in-the-loop)付き。ツールは全て OBO 実行され RLS が効く。
+- エージェントの LLM は **Kimi K3 (FMAPI OSS pay-per-token)**。社内コンテストの要件で
+  FMAPI Partner モデル(Claude)は使えないため差し替えた。環境変数 `BARISTA_MODEL` で
+  差し替え可能(省略時 `databricks-kimi-k3`、server/agents/barista.ts)。
+  権限・リソースバインディングは databricks.yml の `agents_serving_endpoint_name` が単一ソース。
 - トレーシングは AppKit の OpenTelemetry スパン(自動)。agents プラグインの標準パスに
   MLflow tracing の設定項目は存在しない(MLflow は Supervisor API アダプタ経由の managed agents 側の話)。
 

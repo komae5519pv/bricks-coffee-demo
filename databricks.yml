@@ -87,7 +87,7 @@ targets:
       postgres_project: projects/konomi-coffee-shop
       postgres_branch: projects/konomi-coffee-shop/branches/production
       postgres_database: projects/konomi-coffee-shop/branches/production/databases/databricks-postgres
-      agents_serving_endpoint_name: databricks-claude-sonnet-4-5
+      agents_serving_endpoint_name: databricks-kimi-k3
       embedding_endpoint_name: databricks-qwen3-embedding-0-6b
 
   # ---------------------------------------------------------------------------
@@ -112,5 +112,5 @@ targets:
       postgres_project: projects/konomi-coffee-shop
       postgres_branch: projects/konomi-coffee-shop/branches/staging
       postgres_database: projects/konomi-coffee-shop/branches/staging/databases/databricks-postgres
-      agents_serving_endpoint_name: databricks-claude-sonnet-4-5
+      agents_serving_endpoint_name: databricks-kimi-k3
       embedding_endpoint_name: databricks-qwen3-embedding-0-6b

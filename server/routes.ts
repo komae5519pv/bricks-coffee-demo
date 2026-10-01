@@ -9,6 +9,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import type { AppHandle } from './server';
+import { BARISTA_MODEL } from './agents/barista';
 import type { EmbeddingsInvoker } from './lib/embed';
 import { searchMenu, priceCart, insertOrder, reembedItems, syncMenuItemToDelta, deleteMenuItemFromDelta, type DbLike } from './lib/menu';
 import { getDeltaSyncStatus, getLakebaseStatus, getOrderEvents, recordCommit } from './lib/status';
@@ -588,7 +589,7 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
           agent: {
             name: 'barista',
             hosting: 'on-app (AppKit agents plugin, beta)',
-            model_endpoint: process.env.DATABRICKS_SERVING_ENDPOINT_NAME ?? null,
+            model_endpoint: BARISTA_MODEL,
             embedding_endpoint: process.env.EMBEDDING_ENDPOINT_NAME ?? null,
             tracing: 'OpenTelemetry spans (AppKit execution pipeline, automatic)',
             tools: [

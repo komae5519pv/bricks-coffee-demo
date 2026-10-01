@@ -110,8 +110,17 @@ export function setBaristaEmbeddings(invoker: EmbeddingsInvoker): void {
   embeddingsInvoker = invoker;
 }
 
+// Kimi K3 (FMAPI OSS pay-per-token): the internal contest disallows FMAPI
+// Partner models (Claude). Override with the BARISTA_MODEL env var; any
+// tool-calling llm/v1/chat endpoint works (OpenAI-compatible /invocations).
+const DEFAULT_BARISTA_MODEL = 'databricks-kimi-k3';
+
+/** Effective barista LLM endpoint (exported for the /api/status page). */
+export const BARISTA_MODEL = process.env.BARISTA_MODEL ?? DEFAULT_BARISTA_MODEL;
+
 export const barista = createAgent({
   name: 'barista',
+  model: BARISTA_MODEL,
   instructions: INSTRUCTIONS,
   tools(plugins) {
     const db = requirePlugin<DbLike>(plugins.lakebase, 'lakebase', ['query']);
