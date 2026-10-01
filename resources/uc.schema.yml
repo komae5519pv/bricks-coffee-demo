@@ -1,0 +1,10 @@
+# Unity Catalog スキーマ (CDC 履歴テーブル lb_*_history の複製先 + Genie データソース)。
+# カタログ自体は既存のものを var.catalog で指す (カタログ作成権限は配布先で持てないことがあるため
+# bundle 管理にしない)。スキーマ内のテーブル/ビュー作成と SP への GRANT は post_deploy.sh が行う
+# (CDC は DABs 非対応、GRANT は bundle の grants リソースが無いため)。
+resources:
+  schemas:
+    coffee_schema:
+      catalog_name: ${var.catalog}
+      name: ${var.schema}
+      comment: BRICKS COFFEE demo — Lakebase CDC (Lakehouse Sync) の複製先 + Genie 参照ビュー

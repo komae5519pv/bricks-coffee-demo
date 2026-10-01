@@ -6,7 +6,7 @@ Statement Execution API as the app SP. The sql-warehouse resource only grants
 CAN_USE on the warehouse — UC data permissions are separate and must be
 granted once after the app is first created:
 
-  python3 tools/grant_app_sp_uc.py [--profile fevm-konomi-demo]
+  python3 tools/grant_app_sp_uc.py [--profile fevm-konomi-demo] [--catalog C] [--schema S] [--app-name A]
 
 Idempotent (GRANT is additive).
 """
@@ -14,10 +14,6 @@ import argparse
 import json
 import subprocess
 import sys
-
-CATALOG = 'konomi_demo_catalog'
-SCHEMA = 'cofee_shop'
-APP_NAME = 'daiwt-coffee-shop'
 
 
 def cli(*args: str, profile: str) -> str:
@@ -31,19 +27,23 @@ def cli(*args: str, profile: str) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--profile', default='fevm-konomi-demo')
+    ap.add_argument('--catalog', default='konomi_demo_catalog')
+    ap.add_argument('--schema', default='cofee_shop')
+    ap.add_argument('--app-name', default='daiwt-coffee-shop')
     args = ap.parse_args()
 
-    app = json.loads(cli('apps', 'get', APP_NAME, '-o', 'json', profile=args.profile))
+    app = json.loads(cli('apps', 'get', args.app_name, '-o', 'json', profile=args.profile))
     sp = app['service_principal_client_id']
     print(f'app SP: {sp}')
 
+    catalog, schema = args.catalog, args.schema
     for sql in [
-        f'GRANT USE CATALOG ON CATALOG {CATALOG} TO `{sp}`',
-        f'GRANT USE SCHEMA ON SCHEMA {CATALOG}.{SCHEMA} TO `{sp}`',
-        f'GRANT SELECT ON SCHEMA {CATALOG}.{SCHEMA} TO `{sp}`',
+        f'GRANT USE CATALOG ON CATALOG {catalog} TO `{sp}`',
+        f'GRANT USE SCHEMA ON SCHEMA {catalog}.{schema} TO `{sp}`',
+        f'GRANT SELECT ON SCHEMA {catalog}.{schema} TO `{sp}`',
         # menu_items is a static Delta copy synced by the app on admin edits
         # (PG vector column keeps it out of CDC) — needs MODIFY, not just SELECT.
-        f'GRANT MODIFY ON TABLE {CATALOG}.{SCHEMA}.menu_items TO `{sp}`',
+        f'GRANT MODIFY ON TABLE {catalog}.{schema}.menu_items TO `{sp}`',
     ]:
         print('==', sql)
         cli('experimental', 'aitools', 'tools', 'query', sql, profile=args.profile)

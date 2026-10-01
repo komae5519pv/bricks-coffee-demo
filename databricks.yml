@@ -5,112 +5,95 @@
 # ここの variables に集約する。アプリ実行時に必要な値は tools/render_app_yaml.mjs
 # がこのファイルから app.yaml を再生成して注入する (app.yaml を直接編集しない)。
 #
-#   npm run render:appyaml                    # app.yaml 再生成
-#   databricks bundle validate --profile fevm-konomi-demo
-#   databricks bundle deploy   --profile fevm-konomi-demo
+# 再現デプロイ (別エンジニアが自分のワークスペースに作る場合) は README の
+# 「再現デプロイ (DABs)」を参照。必須変数は catalog と warehouse_id の2つだけで、
+# dev ターゲットの variables: に書くか `--var "catalog=..."` で渡す。
+# ワークスペースの host/profile はここには書かず、実行時に `--profile <PROFILE>`
+# で渡すこと (自分の CLI プロファイルが使われる)。
+#
+#   npm run render:appyaml                      # app.yaml 再生成
+#   databricks bundle validate --profile <PROFILE> --var "catalog=<C>" --var "warehouse_id=<W>"
+#   databricks bundle deploy   --profile <PROFILE>
+#   databricks apps deploy     --profile <PROFILE>   # 引数なしで実行 (ソースを上げる)
+#   scripts/post_deploy.sh     --profile <PROFILE>
 # =============================================================================
 bundle:
   name: daiwt-coffee-shop
 
+include:
+  - resources/*.yml
+
 variables:
-  # --- Unity Catalog (Delta 側: Lakehouse Sync の複製先 & Genie のデータソース) ---
+  # --- 必須 (デフォルトなし。dev ターゲットか --var で設定) ---
   catalog:
-    description: UC catalog that receives the Lakebase CDC history tables and hosts Genie data sources
-  schema:
-    description: 'UC schema for the coffee shop Delta objects (note: "cofee_shop" is the intentional spelling)'
+    description: CDC 履歴テーブルの複製先 & Genie のデータソースになる既存 UC カタログ (CREATE SCHEMA 権限が必要)
   warehouse_id:
-    description: SQL warehouse used for Delta-side status queries and the Genie space
+    description: Delta 側のステータスクエリと Genie スペースが使う SQL warehouse の ID
+  # --- Unity Catalog (Delta 側: Lakehouse Sync の複製先 & Genie のデータソース) ---
+  schema:
+    description: 'コーヒーショップの Delta オブジェクト用 UC スキーマ名 ("cofee_shop" は意図的なスペル)'
+    default: cofee_shop
   genie_space_id:
-    description: Genie space ID over the synced Delta tables (fill after `databricks genie create-space`; see README 初回セットアップ)
-    default: ""
+    description: Genie スペース ID。bundle deploy でスペース作成後に scripts/post_deploy.sh が自動記入する (手動作成時は README 初回セットアップ参照)
+    default: ''
   # --- Lakebase (OLTP 側) ---
+  lakebase_project_id:
+    description: Lakebase プロジェクト ID (ワークスペース内でユニーク。小文字・数字・ハイフン)
+    default: coffee-shop
+  lakebase_branch_id:
+    description: Lakebase デフォルトブランチの ID (プロジェクト作成時にこの名前で自動作成される)
+    default: production
   postgres_project:
-    description: Full Lakebase Postgres project resource name
+    description: Lakebase Postgres プロジェクトのフルリソース名
+    default: projects/${var.lakebase_project_id}
   postgres_branch:
-    description: Full Lakebase Postgres branch resource name
+    description: Lakebase Postgres ブランチのフルリソース名
+    default: ${var.postgres_project}/branches/${var.lakebase_branch_id}
   postgres_database:
-    description: Full Lakebase Postgres database resource name
+    description: Lakebase Postgres データベースのフルリソース名 (databricks-postgres はプロジェクト作成時に自動作成される)
+    default: ${var.postgres_branch}/databases/databricks-postgres
+  cdf_config_id:
+    description: Lakehouse Sync (CDC) 設定の ID。post_deploy.sh が REST/CLI で作成する (DABs 非対応のため)
+    default: coffee_shop_cdc
+  # --- アプリ / Genie ---
+  app_name:
+    description: Databricks Apps のアプリ名 (URL の一部になる。同一 WS に同居させる場合は変える)
+    default: daiwt-coffee-shop
+  genie_space_title:
+    description: Genie スペースの表示名 (post_deploy.sh が ID 検索に使う)
+    default: BRICKS COFFEE (Lakebase CDC デモ)
+  demo_user_email:
+    description: Genie の指示文で「私」として扱うデモユーザーのメールアドレス
+    default: ${workspace.current_user.userName}
+  secret_scope:
+    description: シークレットスコープ名 (Unsplash キー等の格納用。値の投入は post_deploy.sh / 手動)
+    default: daiwt-coffee-shop
   # --- モデル ---
   agents_serving_endpoint_name:
-    description: Default LLM serving endpoint name
+    description: バリスタエージェントが使う LLM サービングエンドポイント名
+    default: databricks-claude-sonnet-4-5
   embedding_endpoint_name:
-    description: Foundation Model API embedding endpoint for semantic menu search
-
-resources:
-  apps:
-    app:
-      name: "daiwt-coffee-shop"
-      description: "DAIWT Tokyo keynote coffee shop - 2026 rebuild: Lakebase-native, OBO, on-app agent"
-      source_code_path: ./
-
-      lifecycle:
-        started: true
-
-      # On-behalf-of: the app gets a per-user token for Lakebase (per-user
-      # pg pools + RLS do the authorization).
-      user_api_scopes:
-        - postgres
-
-      resources:
-        - name: agents-serving-endpoint
-          serving_endpoint:
-            name: ${var.agents_serving_endpoint_name}
-            permission: CAN_QUERY
-        - name: embedding-endpoint
-          serving_endpoint:
-            name: ${var.embedding_endpoint_name}
-            permission: CAN_QUERY
-        - name: postgres
-          postgres:
-            branch: ${var.postgres_branch}
-            database: ${var.postgres_database}
-            permission: CAN_CONNECT_AND_CREATE
-        # Delta 側の同期状態をアプリ内ステータスページから読むための warehouse。
-        # アプリのサービスプリンシパルに CAN_USE が付与される。
-        - name: sql-warehouse
-          sql_warehouse:
-            id: ${var.warehouse_id}
-            permission: CAN_USE
+    description: メニューのセマンティック検索に使う Foundation Model API 埋め込みエンドポイント
+    default: databricks-qwen3-embedding-0-6b
 
 targets:
-  default:
+  # デフォルトターゲット。ワークスペースは --profile で渡す (ここに host を書かない)。
+  # 必須変数はここで上書きする:
+  #   targets:
+  #     dev:
+  #       variables:
+  #         catalog: my_catalog
+  #         warehouse_id: abc123def456
+  dev:
     default: true
-    workspace:
-      host: https://fevm-konomi-demo.cloud.databricks.com
-      root_path: /Workspace/Users/konomi.omae@databricks.com/02_demo/apps/20260924_daiwt_tokyo_keynote
-
-    variables:
-      catalog: konomi_demo_catalog
-      schema: cofee_shop
-      warehouse_id: 348478745ad64b30   # Serverless Starter Warehouse
-      genie_space_id: 01f1b7fc22dd131a98457d1273f90b8a   # DAIWT コーヒーショップ (Lakebase CDC デモ)
-      postgres_project: projects/konomi-coffee-shop
-      postgres_branch: projects/konomi-coffee-shop/branches/production
-      postgres_database: projects/konomi-coffee-shop/branches/production/databases/databricks-postgres
-      agents_serving_endpoint_name: databricks-claude-sonnet-4-5
-      embedding_endpoint_name: databricks-qwen3-embedding-0-6b
-
+    variables: {}
   # ---------------------------------------------------------------------------
-  # 別環境ターゲットの例: `databricks bundle deploy -t staging --profile <PROFILE>`
-  # 同名アプリの衝突を避けるため mode: development (リソース名に [dev <user>] が付く)。
-  # 事前準備:
-  #   databricks postgres create-branch projects/konomi-coffee-shop staging \
-  #     --json '{"spec": {"source_branch": "projects/konomi-coffee-shop/branches/production", "no_expiry": true}}'
-  #   UC にスキーマ konomi_demo_catalog.cofee_shop_staging を作成
+  # 別ターゲットの追加例 (Lakebase ブランチや UC スキーマを変えて同居させる):
+  #   staging:
+  #     variables:
+  #       catalog: my_catalog
+  #       warehouse_id: abc123def456
+  #       schema: cofee_shop_staging
+  #       lakebase_project_id: coffee-shop-staging
+  #       app_name: daiwt-coffee-shop-staging
   # ---------------------------------------------------------------------------
-  staging:
-    mode: development
-    workspace:
-      host: https://fevm-konomi-demo.cloud.databricks.com
-      root_path: /Workspace/Users/konomi.omae@databricks.com/02_demo/apps/20260924_daiwt_tokyo_keynote_staging
-
-    variables:
-      catalog: konomi_demo_catalog
-      schema: cofee_shop_staging
-      warehouse_id: 348478745ad64b30
-      genie_space_id: ""
-      postgres_project: projects/konomi-coffee-shop
-      postgres_branch: projects/konomi-coffee-shop/branches/staging
-      postgres_database: projects/konomi-coffee-shop/branches/staging/databases/databricks-postgres
-      agents_serving_endpoint_name: databricks-claude-sonnet-4-5
-      embedding_endpoint_name: databricks-qwen3-embedding-0-6b

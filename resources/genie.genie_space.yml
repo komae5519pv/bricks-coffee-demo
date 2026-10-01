@@ -1,0 +1,81 @@
+# Genie スペース (bundle で作成)。serialized_space は fevm-konomi-demo の本番スペース
+# (01f1b7fc22dd131a98457d1273f90b8a) を include_serialized_space=true でエクスポートし、
+# catalog/schema/デモユーザー メールを ${var.*} に置き換えたもの。
+# フォールバック (REST API で手動作成) 用の素の JSON は genie/genie_space.json。
+resources:
+  genie_spaces:
+    coffee_genie:
+      title: ${var.genie_space_title}
+      description: 'BRICKS COFFEE: Lakebase に書き込まれた注文を CDC で Delta に複製し、嗜好(customer_preferences)を踏まえた提案を返すデモ用スペース'
+      warehouse_id: ${var.warehouse_id}
+      parent_path: ${workspace.file_path}
+      serialized_space:
+        version: 2
+        config:
+          sample_questions:
+            - id: 09c2a764785642c1b9d670af5c0acda8
+              question:
+                - 私におすすめのドリンクを提案して
+            - id: 3ef146edf6d04dcd8225016211082ace
+              question:
+                - 店舗別の人気商品トップ3を教えて
+            - id: e497df723ce64e41acb5f90c00e979ae
+              question:
+                - 過去の注文履歴を見せて
+        data_sources:
+          tables:
+            - identifier: ${var.catalog}.${var.schema}.customer_preferences
+            - identifier: ${var.catalog}.${var.schema}.historical_orders
+            - identifier: ${var.catalog}.${var.schema}.menu_items
+            - identifier: ${var.catalog}.${var.schema}.order_items
+            - identifier: ${var.catalog}.${var.schema}.orders
+            - identifier: ${var.catalog}.${var.schema}.stores
+        instructions:
+          text_instructions:
+            - id: 417caba1152d4b3aaba0ba87f84cd7a5
+              content:
+                - |
+                  このスペースは日本のコーヒーチェーン(世界12か国展開)の注文データを分析します。各テーブルは Lakebase (OLTP) から CDC (Lakehouse Sync) で数秒以内に複製された最新状態です。メニュー・カテゴリ名は日本語、価格はすべて円(整数)です。
+                - |+
+
+                - |
+                  ## データ
+                - |
+                  - orders: ライブ注文(アプリからの現在の注文)。status は received → preparing → ready → done / cancelled。channel は manual(アプリ画面) / chat(AIバリスタ)
+                - |
+                  - order_items: ライブ注文の明細行。orders と order_id で結合
+                - |
+                  - historical_orders: 過去の注文履歴(分析用の大量データ・行単位の明細)。金額は持たないので、売上・人気の分析は menu_items と sku で結合すること(人気度 = COUNT(*) や SUM(quantity))
+                - |
+                  - menu_items: 店舗別メニュー(SKU 単位)。price は円(整数)。active = true が販売中。カテゴリは日本語(ドリップコーヒー/エスプレッソ/コールドブリュー&アイス/ティー&抹茶/季節のおすすめ/フラッペ&ブレンデッド/ペイストリー/サンドイッチ&フード)
+                - |2
+                    - 栄養: calories_kcal(カロリー・整数kcal) / protein_g(タンパク質) / fat_g(脂質)
+                - |2
+                    - アレルゲン: contains_milk / contains_egg / contains_wheat / contains_nuts (boolean)
+                - |2
+                    - alt_milk_options: 代替乳に変更可能なドリンクは 'oat,almond,soy' 入り。牛乳アレルギーの人には contains_milk=false の商品か、alt_milk_options が空でない商品を「代替乳に変更すれば飲める」として案内すること
+                - |2
+                    - scenes: 'breakfast,lunch,snack' のカンマ区切り(シーン)。is_classic=定番 / is_new=新商品 / is_seasonal=季節限定
+                - |2
+                    - target_tags: 人気の傾向を示すコード(health, protein, sweet, business, women, students 等)。ステレオタイプな断定ではなく傾向として扱うこと
+                - |
+                  - customer_preferences: 顧客の嗜好。user_email ごとの preference_key / preference_value。milk_allergy = 'true' は牛乳アレルギー
+                - |
+                  - stores: 店舗マスタ(12か国)
+                - |+
+
+                - |
+                  ## ルール
+                - |
+                  - 提案・おすすめを求められたら、必ず customer_preferences を確認し、アレルギーに配慮すること。例: milk_allergy = 'true' なら contains_milk = true の商品を避け、alt_milk_options ありの商品は「代替乳に変更すれば飲めます」と案内すること
+                - |
+                  - 「私」「自分」と言われたら、デモ用に user_email = '${var.demo_user_email}' として扱うこと
+                - |
+                  - 顧客個人の注文履歴は orders.user_email で絞ること
+                - |
+                  - 過去の実績分析には historical_orders、現在進行中の注文には orders / order_items を使うこと
+                - |
+                  - カロリー・タンパク質・脂質の質問には menu_items の栄養列を使い、数値を明記して答えること(「最もカロリーが低いドリンク」は calories_kcal で ORDER BY)
+                - |
+                  - 金額はすべて円(¥)で表示すること(例: 「¥720」)
+                - '- 回答は日本語で'
