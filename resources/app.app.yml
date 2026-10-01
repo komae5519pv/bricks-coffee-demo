@@ -1,0 +1,37 @@
+# Databricks App 本体 (登録のみ。ソースのデプロイは別途 `databricks apps deploy`)。
+# env は app.yaml 側に定義する (app.yaml は tools/render_app_yaml.mjs が databricks.yml から生成)。
+resources:
+  apps:
+    app:
+      name: ${var.app_name}
+      description: 'BRICKS COFFEE - DAIWT Tokyo keynote coffee shop: Lakebase-native, OBO, on-app agent'
+      source_code_path: ../
+
+      lifecycle:
+        started: true
+
+      # On-behalf-of: the app gets a per-user token for Lakebase (per-user
+      # pg pools + RLS do the authorization).
+      user_api_scopes:
+        - postgres
+
+      resources:
+        - name: agents-serving-endpoint
+          serving_endpoint:
+            name: ${var.agents_serving_endpoint_name}
+            permission: CAN_QUERY
+        - name: embedding-endpoint
+          serving_endpoint:
+            name: ${var.embedding_endpoint_name}
+            permission: CAN_QUERY
+        - name: postgres
+          postgres:
+            branch: ${var.postgres_branch}
+            database: ${var.postgres_database}
+            permission: CAN_CONNECT_AND_CREATE
+        # Delta 側の同期状態をアプリ内ステータスページから読むための warehouse。
+        # アプリのサービスプリンシパルに CAN_USE が付与される。
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE

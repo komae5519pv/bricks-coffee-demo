@@ -1,0 +1,20 @@
+# Lakebase (Postgres Autoscaling) プロジェクト。
+#
+# プロジェクト作成時にバックエンドが自動作成するもの (bundle では宣言しない):
+#   - デフォルトブランチ   … default_branch で指定した名前 (production)
+#   - primary エンドポイント (read-write)
+#   - databricks-postgres データベース (PG 上の名前は databricks_postgres)
+#   - プロジェクト作成者の owner ロール (DATABRICKS_SUPERUSER)
+#   - アプリの postgres バインディング用 SP ロール (app リソースのデプロイ時)
+# これらを bundle で二重宣言すると fresh デプロイが 409 で失敗するため、
+# 参照は ${var.postgres_branch} / ${var.postgres_database} の変数経由に留める。
+resources:
+  postgres_projects:
+    lakebase:
+      project_id: ${var.lakebase_project_id}
+      display_name: BRICKS COFFEE (DABs repro)
+      pg_version: 17
+      default_branch: ${var.postgres_branch}
+      default_endpoint_settings:
+        autoscaling_limit_min_cu: 1
+        autoscaling_limit_max_cu: 1

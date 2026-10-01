@@ -354,7 +354,7 @@ warehouse/Genie スペース ID は全てここ。app.yaml は生成物なので
 npm run render:appyaml     # databricks.yml -> app.yaml 再生成 (tools/render_app_yaml.mjs)
 ```
 
-別環境ターゲットの例として `staging` target あり(事前に Lakebase ブランチと UC スキーマの作成が必要)。
+別環境ターゲットの追加例は databricks.yml 末尾のコメント参照(事前に Lakebase ブランチと UC スキーマの作成が必要)。
 
 ## 再デプロイ手順
 
@@ -384,6 +384,94 @@ python3 tools/setup_delta.py --profile fevm-konomi-demo
 python3 tools/grant_app_sp_uc.py --profile fevm-konomi-demo
 # 5. Genie スペース作成(REST API: POST /api/2.0/genie/spaces、CLI は `databricks genie create-space`)
 #    作成した space id を databricks.yml の genie_space_id に記録 -> render:appyaml -> apps deploy
+```
+
+## 再現デプロイ (DABs)
+
+別のワークスペースにこのデモを一式再現する手順 (Declarative Automation Bundles + 仕上げスクリプト)。
+上の「再デプロイ手順」が本番ワークスペース (fevm-konomi-demo) 向けなのに対し、こちらは
+**自分のワークスペースにクローンから作る** 汎用フロー。host/profile は databricks.yml に
+書かず、実行時に `--profile` で渡す。
+
+### 前提
+
+- Databricks CLI **>= v1.4.0** (postgres/genie の DABs 直接リソースに必要)
+- Node.js 22+ / python3 / **psql** (例: `brew install libpq`)
+- ワークスペース権限: Apps 作成・Lakebase プロジェクト作成・既存 UC カタログへの CREATE SCHEMA・
+  SQL warehouse の CAN_USE・モデルサービングエンドポイント (Claude Sonnet 4.5 / qwen3 embedding) の CAN_QUERY
+- 自分の CLI プロファイル (OAuth)
+
+### 手順 (3コマンド + 仕上げ1本)
+
+```bash
+git clone <this repo> && cd daiwt-coffee-shop
+npm install && npm run build
+
+# 0. 必須変数2つを databricks.yml の targets.dev.variables に書く:
+#      catalog      … CREATE SCHEMA 可能な既存 UC カタログ
+#      warehouse_id … 任意の SQL warehouse の ID
+npm run render:appyaml                        # databricks.yml -> app.yaml 生成
+databricks bundle deploy --profile <PROFILE>  # リソース一式作成
+databricks apps deploy   --profile <PROFILE>  # ソースのデプロイ (必ず引数なしで)
+scripts/post_deploy.sh   --profile <PROFILE>  # 仕上げ (冪等)
+```
+
+### 工程の担当分け
+
+| 工程                                                                | 担当                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UC スキーマ (var.catalog 配下)                                      | bundle (`resources/uc.schema.yml`)                                                                                                                                                                                                      |
+| Lakebase プロジェクト (PG17)                                        | bundle (`resources/lakebase.postgres.yml`)。production ブランチ / primary エンドポイント / databricks-postgres DB / owner ロールはプロジェクト作成時に自動作成されるため bundle では宣言しない (二重宣言は fresh デプロイで 409 になる) |
+| Genie スペース (指示文・6テーブル・サンプル質問入り)                | bundle (`resources/genie.genie_space.yml` — 本番スペースの serialized export を変数化したもの)                                                                                                                                          |
+| App 登録・SP・Lakebase/warehouse/LLM エンドポイントのバインディング | bundle (`resources/app.app.yml`)                                                                                                                                                                                                        |
+| シークレットスコープ (器のみ)                                       | bundle (`resources/secrets.secret_scope.yml`)                                                                                                                                                                                           |
+| アプリのソース・ビルド                                              | `databricks apps deploy`                                                                                                                                                                                                                |
+| Lakebase の DDL/seed/RLS/REPLICA IDENTITY FULL                      | アプリ初回起動 (server/db.ts)。post_deploy.sh が psql で完了を待ち RIF を冪等に再確認                                                                                                                                                   |
+| Lakehouse Sync (CDF config)                                         | post_deploy.sh。**DABs 非対応** (REST/CLI のみ)                                                                                                                                                                                         |
+| 最新状態ビュー + menu_items Delta テーブル                          | post_deploy.sh → tools/setup_delta.py                                                                                                                                                                                                   |
+| アプリ SP への UC GRANT                                             | post_deploy.sh → tools/grant_app_sp_uc.py (bundle に grants リソースが無い)                                                                                                                                                             |
+| GENIE_SPACE_ID の反映                                               | post_deploy.sh (スペース ID を検出 → databricks.yml 記入 → app.yaml 再生成 → apps 再デプロイ)                                                                                                                                           |
+| シークレットの値 (Unsplash キー・任意)                              | post_deploy.sh が対話時に聞く / 手動 `databricks secrets put-secret`                                                                                                                                                                    |
+
+### 自動化できず手動で残るもの
+
+- **必須変数2つ (catalog, warehouse_id) の設定** — ワークスペース固有のため
+- Genie スペース / アプリの他ユーザーへの共有 (デモで見せる場合。UI から権限付与)
+- Unsplash API キー (商品画像の再取得を行う場合のみ。アプリ実行には不要)
+
+### デモ/コンテスト固有の値の置き場
+
+- `databricks.yml` の variables が単一ソース (app_name / lakebase_project_id / genie_space_title / demo_user_email / モデルエンドポイント名 等)
+- Genie の指示文・サンプル質問・参照テーブル: `resources/genie.genie_space.yml`
+  (エクスポート元の素 JSON は `genie/genie_space.json`。プレースホルダ `__UC_CATALOG__` 等を置換して
+  `POST /api/2.0/genie/spaces` に投げれば bundle を使わず手動でも作れる = フォールバック)
+- シードデータ (店舗・メニュー 924SKU・過去注文 7,284行): `server/seed/*.json` (生成は tools/generate_seed.py)
+- 商品画像マッピング: `server/seed/menu_images.json` (再取得は tools/fetch_unsplash_images.mjs)
+
+### 注意
+
+- Lakebase 側の PG スキーマ名 `cofee_shop` はアプリコードにハードコードされている (変えるにはアプリ改修が必要)。
+  変数化されているのは UC 側 (`var.catalog` / `var.schema`) のみ。CDF config は PG `cofee_shop` → UC `var.catalog.var.schema` にマップされる
+- `databricks bundle validate` は必須変数未設定だと「no value assigned to required variable catalog」で止まる
+  (仕様。変数を書くか `--var "catalog=..." --var "warehouse_id=..."` を付ける)
+- 同一ワークスペースに複数人がデプロイする場合は app_name / lakebase_project_id / schema を各人で変える
+
+### フォールバック: Genie スペースを bundle を使わず REST で作る
+
+`genie/genie_space.json` のプレースホルダを置換して POST する (作成後の ID 記入は post_deploy.sh がやる):
+
+```bash
+python3 - <<'EOF'
+import json, subprocess
+body = json.load(open('genie/genie_space.json'))
+s = json.dumps(body['serialized_space'], ensure_ascii=False)
+s = (s.replace('__UC_CATALOG__', '<CATALOG>').replace('__UC_SCHEMA__', '<SCHEMA>')
+      .replace('__DEMO_USER_EMAIL__', '<YOUR_EMAIL>'))
+body.update(serialized_space=s, warehouse_id='<WAREHOUSE_ID>',
+            parent_path='/Workspace/Users/<YOUR_EMAIL>', title='BRICKS COFFEE (Lakebase CDC デモ)')
+subprocess.run(['databricks', 'api', 'post', '/api/2.0/genie/spaces', '--profile', '<PROFILE>',
+                '--json', json.dumps(body, ensure_ascii=False)], check=True)
+EOF
 ```
 
 ## 品質ゲート

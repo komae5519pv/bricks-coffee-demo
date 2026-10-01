@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Set up the Delta-side objects for the Genie demo in konomi_demo_catalog.cofee_shop.
+"""Set up the Delta-side objects for the Genie demo in the UC schema.
 
 Run AFTER Lakehouse Sync (CDF config) is ONLINE:
 
-  python3 tools/setup_delta.py [--profile fevm-konomi-demo]
+  python3 tools/setup_delta.py [--profile fevm-konomi-demo] [--catalog C] [--schema S]
 
 Creates, in the UC schema:
   - views orders / order_items / customer_preferences / historical_orders / stores:
@@ -21,9 +21,6 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-CATALOG = 'konomi_demo_catalog'
-SCHEMA = 'cofee_shop'
-FQ = f'{CATALOG}.{SCHEMA}'
 
 
 def run_sql(sql: str, profile: str) -> None:
@@ -36,13 +33,13 @@ def run_sql(sql: str, profile: str) -> None:
         sys.exit(1)
 
 
-def latest_view(view: str, history: str, pk: str) -> str:
+def latest_view(fq: str, view: str, history: str, pk: str) -> str:
     return f"""
-CREATE OR REPLACE VIEW {FQ}.{view} AS
+CREATE OR REPLACE VIEW {fq}.{view} AS
 SELECT * EXCEPT(_pg_change_type, _pg_lsn, _pg_xid, _timestamp, _sort_by, rn)
 FROM (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY {pk} ORDER BY _pg_lsn DESC) AS rn
-  FROM {FQ}.{history}
+  FROM {fq}.{history}
   WHERE _pg_change_type IN ('insert', 'update_postimage', 'delete')
 )
 WHERE rn = 1 AND _pg_change_type != 'delete'
@@ -62,20 +59,24 @@ TABLE_COMMENTS = {
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--profile', default='fevm-konomi-demo')
+    ap.add_argument('--catalog', default='konomi_demo_catalog')
+    ap.add_argument('--schema', default='cofee_shop')
     args = ap.parse_args()
     p = args.profile
+    fq = f'{args.catalog}.{args.schema}'
 
+    print(f'target: {fq} (profile: {p})')
     print('creating latest-state views...')
-    run_sql(latest_view('orders', 'lb_orders_history', 'id'), p)
-    run_sql(latest_view('order_items', 'lb_order_items_history', 'id'), p)
-    run_sql(latest_view('customer_preferences', 'lb_customer_preferences_history', 'user_email, preference_key'), p)
-    run_sql(latest_view('historical_orders', 'lb_historical_orders_history', 'row_id'), p)
-    run_sql(latest_view('stores', 'lb_stores_history', 'store_id'), p)
+    run_sql(latest_view(fq, 'orders', 'lb_orders_history', 'id'), p)
+    run_sql(latest_view(fq, 'order_items', 'lb_order_items_history', 'id'), p)
+    run_sql(latest_view(fq, 'customer_preferences', 'lb_customer_preferences_history', 'user_email, preference_key'), p)
+    run_sql(latest_view(fq, 'historical_orders', 'lb_historical_orders_history', 'row_id'), p)
+    run_sql(latest_view(fq, 'stores', 'lb_stores_history', 'store_id'), p)
 
     print('creating menu_items Delta table from seed...')
     seed = json.loads((ROOT / 'server/seed/menu_items.json').read_text())
     run_sql(f"""
-CREATE OR REPLACE TABLE {FQ}.menu_items (
+CREATE OR REPLACE TABLE {fq}.menu_items (
   sku STRING, store_id STRING, item_key STRING, item_name STRING, category STRING,
   size STRING, price DECIMAL(10,2), currency STRING, description STRING, active BOOLEAN,
   calories_kcal INT, protein_g DECIMAL(4,1), fat_g DECIMAL(4,1),
@@ -84,7 +85,7 @@ CREATE OR REPLACE TABLE {FQ}.menu_items (
   is_classic BOOLEAN, is_new BOOLEAN, is_seasonal BOOLEAN, target_tags STRING
 )
 """, p)
-    run_sql(f'DELETE FROM {FQ}.menu_items', p)
+    run_sql(f'DELETE FROM {fq}.menu_items', p)
 
     COLS = (
         'sku', 'store_id', 'item_key', 'item_name', 'category', 'size', 'price', 'currency',
@@ -104,12 +105,12 @@ CREATE OR REPLACE TABLE {FQ}.menu_items (
     for i in range(0, len(seed), batch):
         rows = seed[i : i + batch]
         values = ',\n'.join('(' + ', '.join(esc(m[k]) for k in COLS) + ')' for m in rows)
-        run_sql(f'INSERT INTO {FQ}.menu_items ({", ".join(COLS)}) VALUES\n{values}', p)
+        run_sql(f'INSERT INTO {fq}.menu_items ({", ".join(COLS)}) VALUES\n{values}', p)
         print(f'  inserted {min(i + batch, len(seed))}/{len(seed)}')
 
     print('adding table comments...')
     for table, comment in TABLE_COMMENTS.items():
-        run_sql(f"COMMENT ON TABLE {FQ}.{table} IS '{comment}'", p)
+        run_sql(f"COMMENT ON TABLE {fq}.{table} IS '{comment}'", p)
 
     print('done.')
     return 0

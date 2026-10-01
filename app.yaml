@@ -11,10 +11,10 @@ env:
   - name: DATABRICKS_WAREHOUSE_ID
     valueFrom: sql-warehouse
   - name: COFFEE_CATALOG
-    value: 'konomi_demo_catalog'
+    value: ''
   - name: COFFEE_SCHEMA
     value: 'cofee_shop'
   - name: LAKEBASE_PROJECT
-    value: 'projects/konomi-coffee-shop'
+    value: 'projects/coffee-shop'
   - name: GENIE_SPACE_ID
-    value: '01f1b7fc22dd131a98457d1273f90b8a'
+    value: ''
