@@ -29,12 +29,14 @@ interface UploadedTrace {
 
 function mockClient() {
   const uploaded: UploadedTrace[] = [];
-  const createTrace = vi.fn((info: { traceId: string }) => Promise.resolve(info));
-  const uploadTraceData = vi.fn((info: { traceId: string }, data: { spans: LiveSpan[] }) => {
-    uploaded.push({ info: info as UploadedTrace['info'], spans: data.spans });
+  const createTrace: MlflowClient['createTrace'] = vi.fn((info) => Promise.resolve(info));
+  const uploadTraceData: MlflowClient['uploadTraceData'] = vi.fn((info, data) => {
+    uploaded.push({ info: info as UploadedTrace['info'], spans: data.spans as LiveSpan[] });
     return Promise.resolve();
   });
-  const client = { createTrace, uploadTraceData } as unknown as MlflowClient;
+  // Partial fake: the backend only touches these two methods. Single `as` —
+  // appkit's ast-grep lint rejects `as unknown as` double assertions.
+  const client = { createTrace, uploadTraceData } as MlflowClient;
   return { client, uploaded, createTrace, uploadTraceData };
 }
 

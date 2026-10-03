@@ -30,13 +30,25 @@ interface StreamBodyCapable {
 
 let adapterPromise: Promise<AgentAdapter> | null = null;
 
+/**
+ * Narrow an AgentAdapter to StreamBodyCapable with a runtime check (single
+ * `as` only — appkit's ast-grep lint rejects `as unknown as`). `streamBody`
+ * is a public instance field on DatabricksAdapter (documented extension
+ * point), so replacing it needs no monkey-patching of internals.
+ */
+function requireStreamBody(adapter: AgentAdapter): StreamBodyCapable {
+  const candidate = adapter as Partial<StreamBodyCapable>;
+  if (typeof candidate.streamBody !== 'function') {
+    throw new Error('DatabricksAdapter does not expose streamBody — cannot attach LLM span tracing');
+  }
+  return candidate as StreamBodyCapable;
+}
+
 function buildAdapter(model: string): Promise<AgentAdapter> {
   adapterPromise ??= (async () => {
     const inner = await DatabricksAdapter.fromModelServing(model);
-    // One LLM span per HTTP round trip. `streamBody` is a public instance
-    // field on DatabricksAdapter (documented extension point), so replacing
-    // it needs no monkey-patching of internals.
-    const capable = inner as unknown as StreamBodyCapable;
+    // One LLM span per HTTP round trip.
+    const capable = requireStreamBody(inner);
     const original = capable.streamBody.bind(inner);
     capable.streamBody = (body, signal) => traceLlmStream(model, body, signal, original);
     return inner;
