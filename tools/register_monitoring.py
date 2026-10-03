@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["mlflow>=3.2"]
+# dependencies = ["mlflow>=3.2", "databricks-agents>=1.0"]
 # ///
 """Register production-monitoring scorers on the barista experiment.
 
@@ -70,7 +70,9 @@ def main() -> int:
     print(f'experiment: {args.experiment} (id {experiment_id})')
 
     # The monitoring job runs ON this warehouse (Pattern 12 step 1).
-    set_databricks_monitoring_sql_warehouse_id(warehouse_id=args.warehouse_id, experiment_id=experiment_id)
+    # NB: the kwarg is sql_warehouse_id in mlflow 3.16 (the skill's
+    # warehouse_id= example predates the rename).
+    set_databricks_monitoring_sql_warehouse_id(sql_warehouse_id=args.warehouse_id, experiment_id=experiment_id)
     print(f'monitoring warehouse: {args.warehouse_id}')
 
     existing = {s.name for s in list_scorers()}
@@ -81,10 +83,14 @@ def main() -> int:
         # CRITICAL (GOTCHAS): register() alone does not activate monitoring —
         # start() is what schedules the scorer against live traces.
         scorer = get_scorer(name=name) if name in existing else factory().register(name=name)
-        scorer = scorer.start(sampling_config=sampling)
-        rate = scorer.sampling_config.sample_rate if scorer.sampling_config else '?'
-        print(f'  active: {name} (sample_rate={rate})')
+        scorer.start(sampling_config=sampling)
+        print(f'  started: {name}')
 
+    print('\nregistered scorers (from list_scorers):')
+    for sc in list_scorers():
+        cfg = getattr(sc, 'sampling_config', None)
+        rate = getattr(cfg, 'sample_rate', '?') if cfg else '?'
+        print(f'  {sc.name}: sample_rate={rate}')
     print('\nmonitoring live. Assessments attach to NEW traces only (not retroactive).')
     return 0
 

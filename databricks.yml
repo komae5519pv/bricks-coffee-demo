@@ -34,7 +34,8 @@ variables:
     description: 'コーヒーショップの Delta オブジェクト用 UC スキーマ名 ("cofee_shop" は意図的なスペル)'
     default: cofee_shop
   genie_space_id:
-    description: Genie スペース ID。bundle deploy でスペース作成後に scripts/post_deploy.sh が自動記入する (手動作成時は README 初回セットアップ参照)
+    description: Genie スペース ID。bundle deploy でスペース作成後に scripts/post_deploy.sh
+      が自動記入する (手動作成時は README 初回セットアップ参照)
     default: ''
   # --- Lakebase (OLTP 側) ---
   lakebase_project_id:
@@ -86,7 +87,13 @@ targets:
   #         warehouse_id: abc123def456
   dev:
     default: true
-    variables: {}
+    variables:
+      {
+        catalog: konomi_demo_catalog,
+        warehouse_id: 348478745ad64b30,
+        lakebase_project_id: konomi-coffee-shop,
+        genie_space_id: 01f1b7fc22dd131a98457d1273f90b8a
+      }
   # ---------------------------------------------------------------------------
   # 別ターゲットの追加例 (Lakebase ブランチや UC スキーマを変えて同居させる):
   #   staging:

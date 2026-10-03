@@ -27,6 +27,9 @@ Modes:
   npm run eval         full run — needs the app running locally
                        (BARISTA_EVAL_BASE_URL, default http://localhost:8000)
                        and Databricks auth (DATABRICKS_CONFIG_PROFILE).
+                       Against the DEPLOYED app instead: pass --base-url
+                       https://<app-url> plus --auth-token <sso token>
+                       (or BARISTA_EVAL_AUTH_TOKEN).
   npm run eval:smoke   hermetic dry-run — canned outputs from the dataset,
                        local file store, deterministic scorers only, asserts
                        aggregation. No workspace, no app, no LLM calls.
@@ -68,17 +71,20 @@ def load_scenarios() -> list[dict]:
 # predict_fn: one chat turn against the running app (or canned in smoke mode)
 # ---------------------------------------------------------------------------
 
-def chat_turn(base_url: str, message: str, timeout: int = 180) -> dict:
+def chat_turn(base_url: str, message: str, auth_token: str | None = None, timeout: int = 180) -> dict:
     """POST /api/agents/chat and fold the SSE stream into a compact result.
 
     tool_calls capture the agent's INTENT (function_call items), which is what
     the forbidden-tools check wants: a gated place_order shows up here even
     though the human-approval gate blocks its execution.
     """
+    headers = {'Content-Type': 'application/json', 'Accept': 'text/event-stream'}
+    if auth_token:
+        headers['Authorization'] = f'Bearer {auth_token}'
     req = urllib.request.Request(
         f'{base_url}/api/agents/chat',
         data=json.dumps({'message': message, 'agent': 'barista'}).encode(),
-        headers={'Content-Type': 'application/json', 'Accept': 'text/event-stream'},
+        headers=headers,
         method='POST',
     )
     text_parts: list[str] = []
@@ -118,11 +124,11 @@ def chat_turn(base_url: str, message: str, timeout: int = 180) -> dict:
     }
 
 
-def make_predict_fn(base_url: str | None, smoke_outputs: dict[str, dict]):
+def make_predict_fn(base_url: str | None, smoke_outputs: dict[str, dict], auth_token: str | None = None):
     def predict_fn(message: str, scenario_id: str) -> dict:
         if base_url is None:  # smoke mode: canned, hermetic
             return smoke_outputs[scenario_id]
-        return chat_turn(base_url, message)
+        return chat_turn(base_url, message, auth_token)
 
     return predict_fn
 
@@ -212,6 +218,8 @@ def main() -> int:
     parser.add_argument('--judge-model', default=os.environ.get('BARISTA_EVAL_JUDGE_MODEL', DEFAULT_JUDGE_MODEL))
     parser.add_argument('--tracking-uri', default=os.environ.get('MLFLOW_TRACKING_URI', 'databricks'))
     parser.add_argument('--limit', type=int, default=0, help='run only the first N scenarios')
+    parser.add_argument('--auth-token', default=os.environ.get('BARISTA_EVAL_AUTH_TOKEN'),
+                        help='Bearer token for a deployed app (SSO). Not needed for local dev.')
     args = parser.parse_args()
 
     import mlflow
@@ -231,7 +239,9 @@ def main() -> int:
         base_url = args.base_url
         scorers = [*build_deterministic_scorers(), build_judge(args.judge_model)]
         try:
-            with urllib.request.urlopen(f'{base_url}/api/stores', timeout=10) as resp:
+            health_headers = {'Authorization': f'Bearer {args.auth_token}'} if args.auth_token else {}
+            health_req = urllib.request.Request(f'{base_url}/api/stores', headers=health_headers)
+            with urllib.request.urlopen(health_req, timeout=10) as resp:
                 if resp.status != 200:
                     raise RuntimeError(f'status {resp.status}')
         except (urllib.error.URLError, RuntimeError) as e:
@@ -247,7 +257,7 @@ def main() -> int:
         {'inputs': {'message': s['input'], 'scenario_id': s['id']}, 'expectations': s['expectations']}
         for s in scenarios
     ]
-    predict_fn = make_predict_fn(base_url, {s['id']: s['smoke_output'] for s in scenarios})
+    predict_fn = make_predict_fn(base_url, {s['id']: s['smoke_output'] for s in scenarios}, args.auth_token)
 
     results = mlflow.genai.evaluate(data=records, predict_fn=predict_fn, scorers=scorers)
     metrics = results.metrics or {}
