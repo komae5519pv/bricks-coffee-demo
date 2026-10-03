@@ -238,6 +238,11 @@ npm run dev        # 別ターミナルでアプリを起動
 npm run eval       # 本実行: アプリに実問い合わせ → mlflow.genai.evaluate → 実験に記録
 npm run eval:smoke # 密閉ドライラン: ワークスペース不要。データセットの缶詰応答で
                    # 決定論スコアラの配線と集約を検証(ローカル sqlite ストア)
+
+# デプロイ済みアプリに対して打つ場合 (SSO 越し・本番そのものを採点):
+uv run tools/eval_barista.py --tracking-uri databricks://<PROFILE> \
+  --base-url https://<app-url> \
+  --auth-token "$(databricks auth token --profile <PROFILE> -o json | jq -r .access_token)"
 ```
 
 スコアラ3本:
@@ -425,7 +430,7 @@ python3 tools/grant_app_sp_uc.py --profile fevm-konomi-demo
 - Databricks CLI **>= v1.4.0** (postgres/genie の DABs 直接リソースに必要)
 - Node.js 22+ / python3 / **psql** (例: `brew install libpq`)
 - ワークスペース権限: Apps 作成・Lakebase プロジェクト作成・既存 UC カタログへの CREATE SCHEMA・
-  SQL warehouse の CAN_USE・モデルサービングエンドポイント (Claude Sonnet 4.5 / qwen3 embedding) の CAN_QUERY
+  SQL warehouse の CAN_USE・モデルサービングエンドポイント (kimi-k3 / qwen3 embedding) の CAN_QUERY
 - 自分の CLI プロファイル (OAuth)
 
 ### 手順 (3コマンド + 仕上げ1本)
