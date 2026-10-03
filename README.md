@@ -223,7 +223,8 @@ Databricks 認証(プロファイル/OAuth M2M)は SDK の auth モジュール�
 ### ステータスページ連携
 
 `/api/status` とステータスページに「MLflow トレーシング」カードを追加。エクスペリメントへの
-リンク + 最近のトレース(クリックで該当トレースを開ける)を表示する。
+リンク + 最近のトレース(クリックで該当トレースを開ける)+ 最新の評価ランの集約スコア
+(MLflow Runs API を60秒キャッシュで参照。未実行なら「まだありません」と正直に表示)を出す。
 
 ### 評価ハーネス (`npm run eval`)
 
@@ -251,6 +252,29 @@ npm run eval:smoke # 密閉ドライラン: ワークスペース不要。デー
 結果の見方: ワークスペース MLflow UI → エクスペリメント → **Evaluations タブ**。
 実行ごとの集約メトリクスと、サンプルごとのスコア・根拠(rationale)・トレースが見える。
 
+### 本番モニタリング (ライブトラフィックの継続評価)
+
+オフライン評価(`npm run eval`)とは別に、**本番のライブトレースに非同期でスコアを付ける**
+仕組みをエクスペリメントに登録してある(databricks-mlflow-evaluation スキルの Pattern 12)。
+アプリのチャット → トレース記録 → モニタリングジョブが新規トレースを採点 →
+トレースに assessment としてスコアが自動付与される。
+
+```bash
+uv run tools/register_monitoring.py \
+  --tracking-uri databricks://<PROFILE> \
+  --warehouse-id <アプリの SQL warehouse ID>
+```
+
+- 登録スコアラ: **safety**(組込み)と **barista_domain_rubric**(Guidelines ジャッジ:
+  言語一致・数値の根拠・スタッフ機能拒否)。サンプルレート 1.0(デモ流量なら全件採点でよい)
+- モニタリングジョブは指定した SQL warehouse 上で走る
+  (`set_databricks_monitoring_sql_warehouse_id`)。warehouse はアプリにバインド済みのものを使う
+- 登録は冪等。同名スコアラは再 start(サンプルレート更新)される。
+  確認・停止・削除は `mlflow.genai.scorers` の `list_scorers` / `stop` / `delete_scorer`
+- **新規トレースにだけ付く**(遡及しない)。検証は: 登録後にチャット → 数分後に
+  `POST /api/3.0/mlflow/traces/search` で trace の `assessments` を見る
+- スコアラは register だけでは有効化されない。**register + start の両方が必須**(実測落とし穴)
+
 ### デモの一拍
 
 1. チャットで注文(例:「牛乳アレルギーなんだけどおすすめは?」→ 確認 → 注文確定)
@@ -258,6 +282,9 @@ npm run eval:smoke # 密閉ドライラン: ワークスペース不要。デー
    LLM/ツールの各スパン(引数・結果・所要時間)が見える
 3. `npm run eval` を実行 → Evaluations タブで10シナリオのスコアを見せる
    (「本番エージェントの品質を継続評価する仕組み」として)
+4. もう一度チャット → 数分後に同じトレース一覧を開くと、モニタリングの
+   assessment(safety / barista_domain_rubric)が付いている
+   (「デプロイ後もライブトラフィックを採点し続ける」締め)
 
 ### MLflow 落とし穴(実測由来・対応済み)
 

@@ -198,6 +198,14 @@ export interface TracingRecentTrace {
   status: 'OK' | 'ERROR' | 'IN_PROGRESS';
 }
 
+export interface EvalRunSummary {
+  run_id: string;
+  run_name: string | null;
+  url: string | null;
+  started_at: string;
+  metrics: Record<string, number>;
+}
+
 export interface TracingStatus {
   enabled: boolean;
   reason: string | null;
@@ -205,6 +213,7 @@ export interface TracingStatus {
   experiment_id: string | null;
   experiment_url: string | null;
   recent_traces: TracingRecentTrace[];
+  latest_eval: EvalRunSummary | null;
 }
 
 export interface StatusResponse {

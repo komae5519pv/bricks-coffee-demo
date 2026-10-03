@@ -19,6 +19,7 @@ import {
   traceAgentTurn,
   traceToolCall,
   traceLlmStream,
+  getLatestEvalRun,
 } from './tracing';
 
 interface UploadedTrace {
@@ -268,5 +269,46 @@ describe('payload capping', () => {
     const tool = uploaded[0].spans.find((s) => s.name === 'search_menu')!;
     expect(typeof tool.outputs).toBe('string');
     expect((tool.outputs as string).length).toBeLessThan(5000);
+  });
+});
+
+describe('getLatestEvalRun (mocked MLflow REST)', () => {
+  it('returns the most recent run with metrics, with run URL and 60s cache', async () => {
+    const { client } = mockClient();
+    createMlflowBackend({
+      client,
+      experimentId: '424242',
+      experimentName: '/Shared/daiwt-coffee-shop-barista',
+      host: 'https://ws.example.com',
+      getHeaders: () => Promise.resolve({ Authorization: 'Bearer x' }),
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          runs: [
+            { info: { run_id: 'norun', run_name: 'empty', start_time: 300 }, data: { metrics: [] } },
+            {
+              info: { run_id: 'r2', run_name: 'eval-2', start_time: 200 },
+              data: { metrics: [{ key: 'tool_call_correctness/mean', value: 0.9 }] },
+            },
+          ],
+        }),
+        { status: 200 }
+      )
+    );
+    const first = await getLatestEvalRun();
+    expect(first?.run_id).toBe('r2');
+    expect(first?.url).toBe('https://ws.example.com/ml/experiments/424242/runs/r2');
+    expect(first?.metrics['tool_call_correctness/mean']).toBe(0.9);
+    // Second call hits the cache — no second fetch.
+    const second = await getLatestEvalRun();
+    expect(second?.run_id).toBe('r2');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it('returns null when no headers provider is wired (tests/local mocks)', async () => {
+    setupBackend();
+    expect(await getLatestEvalRun()).toBeNull();
   });
 });

@@ -23,7 +23,7 @@ import {
   type PreferenceMemoryRow,
 } from './lib/memory';
 import { pickImage } from './lib/images';
-import { getTracingStatus } from './lib/tracing';
+import { getTracingStatus, getLatestEvalRun } from './lib/tracing';
 
 export interface OrderRow {
   id: string;
@@ -652,8 +652,10 @@ export function registerCoffeeRoutes(appkit: AppHandle, serving: EmbeddingsInvok
             memories: memMemories,
           },
           // MLflow tracing: experiment link + recent traces for the demo
-          // beat "place an order -> open the trace".
-          tracing: getTracingStatus(),
+          // beat "place an order -> open the trace". latest_eval surfaces the
+          // most recent offline eval run's aggregated scores (null until the
+          // first `npm run eval`).
+          tracing: { ...getTracingStatus(), latest_eval: await getLatestEvalRun() },
         });
       } catch (e) {
         res.status(500).json({ error: String(e) });

@@ -253,6 +253,42 @@ export function StatusPage() {
               mono
             />
             <Row label="トレース構造" value="1会話ターン = 1トレース (AGENT > LLM + TOOL)" />
+            {/* Latest offline eval run (npm run eval) — real aggregated scores
+                from the experiment, or an honest "not run yet" note */}
+            <div className="pt-2">
+              <div className="text-xs text-muted-foreground pb-1">最新の評価ラン (オフライン評価: npm run eval)</div>
+              {!data ? null : data.tracing.latest_eval === null ? (
+                <div className="text-xs text-muted-foreground">まだ評価ランがありません — npm run eval を実行するとここに出ます</div>
+              ) : (
+                <div className="text-xs space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground shrink-0">{fmtAgo(data.tracing.latest_eval.started_at, now)}</span>
+                    {data.tracing.latest_eval.url ? (
+                      <a
+                        href={data.tracing.latest_eval.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-0.5 text-blue-600 hover:underline font-mono"
+                      >
+                        {data.tracing.latest_eval.run_name ?? data.tracing.latest_eval.run_id} <ArrowRight className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="font-mono">{data.tracing.latest_eval.run_name ?? data.tracing.latest_eval.run_id}</span>
+                    )}
+                  </div>
+                  <ul className="space-y-0.5 font-mono">
+                    {Object.entries(data.tracing.latest_eval.metrics)
+                      .filter(([k]) => k.endsWith('/mean'))
+                      .map(([k, v]) => (
+                        <li key={k} className="flex items-center gap-2">
+                          <span className="text-muted-foreground">{k.replace(/\/mean$/, '')}</span>
+                          <span className="ml-auto">{v.toFixed(2)}</span>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+            </div>
             <div className="pt-2">
               <div className="text-xs text-muted-foreground pb-1">最近のトレース (このプロセスが記録したもの)</div>
               {!data || data.tracing.recent_traces.length === 0 ? (

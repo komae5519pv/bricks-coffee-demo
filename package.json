@@ -25,7 +25,8 @@
     "render:appyaml": "node tools/render_app_yaml.mjs",
     "setup": "appkit setup --write",
     "eval": "uv run tools/eval_barista.py",
-    "eval:smoke": "uv run tools/eval_barista.py --smoke"
+    "eval:smoke": "uv run tools/eval_barista.py --smoke",
+    "monitoring:register": "uv run tools/register_monitoring.py"
   },
   "keywords": [],
   "author": "",

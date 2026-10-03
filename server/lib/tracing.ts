@@ -185,6 +185,8 @@ interface Backend {
   experimentId: string;
   experimentName: string;
   host: string | null;
+  /** Auth headers for MLflow REST calls (eval-run lookup). Null in tests. */
+  getHeaders: (() => Promise<Record<string, string>>) | null;
 }
 
 let backend: Backend | null = null;
@@ -296,6 +298,7 @@ export function createMlflowBackend(opts: {
   experimentId: string;
   experimentName: string;
   host?: string | null;
+  getHeaders?: (() => Promise<Record<string, string>>) | null;
 }): void {
   const exporter = new MlflowSpanExporter(opts.client);
   const processor = new CoffeeMlflowSpanProcessor(exporter, opts.experimentId);
@@ -306,6 +309,7 @@ export function createMlflowBackend(opts: {
     experimentId: opts.experimentId,
     experimentName: opts.experimentName,
     host: opts.host ?? null,
+    getHeaders: opts.getHeaders ?? null,
   };
   disabledReason = null;
 }
@@ -316,6 +320,72 @@ export async function resetTracingForTests(): Promise<void> {
   backend = null;
   disabledReason = 'initTracing() not called yet';
   recentTraces.length = 0;
+  evalCache = null;
+}
+
+// ---------------------------------------------------------------------------
+// Latest evaluation run (offline eval scores for the status page).
+// ---------------------------------------------------------------------------
+
+export interface EvalRunSummary {
+  run_id: string;
+  run_name: string | null;
+  url: string | null;
+  started_at: string;
+  metrics: Record<string, number>;
+}
+
+const EVAL_CACHE_TTL_MS = 60_000;
+let evalCache: { at: number; value: EvalRunSummary | null } | null = null;
+
+interface RunsSearchResponse {
+  runs?: Array<{
+    info?: { run_id?: string; run_name?: string; start_time?: number | string };
+    data?: { metrics?: Array<{ key: string; value: number }> };
+  }>;
+}
+
+/**
+ * Most recent MLflow run in the experiment that carries aggregated metrics
+ * (i.e. an mlflow.genai.evaluate run — trace exports create no runs). Cached
+ * for 60s; any failure returns null (status page must never break on this).
+ */
+export async function getLatestEvalRun(): Promise<EvalRunSummary | null> {
+  if (!backend?.host || !backend.getHeaders) return null;
+  if (evalCache && Date.now() - evalCache.at < EVAL_CACHE_TTL_MS) return evalCache.value;
+  let value: EvalRunSummary | null = null;
+  try {
+    const resp = await fetch(`${backend.host}/api/2.0/mlflow/runs/search`, {
+      method: 'POST',
+      headers: { ...(await backend.getHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        experiment_ids: [backend.experimentId],
+        max_results: 20,
+        order_by: ['start_time DESC'],
+      }),
+    });
+    if (resp.ok) {
+      const body = (await resp.json()) as RunsSearchResponse;
+      for (const run of body.runs ?? []) {
+        const metrics = Object.fromEntries((run.data?.metrics ?? []).map((m) => [m.key, m.value]));
+        const runId = run.info?.run_id;
+        if (!runId || Object.keys(metrics).length === 0) continue;
+        const startMs = Number(run.info?.start_time ?? 0);
+        value = {
+          run_id: runId,
+          run_name: run.info?.run_name ?? null,
+          url: `${backend.host}/ml/experiments/${backend.experimentId}/runs/${runId}`,
+          started_at: new Date(startMs).toISOString(),
+          metrics,
+        };
+        break;
+      }
+    }
+  } catch (e) {
+    logger.warn('latest eval run lookup failed', e);
+  }
+  evalCache = { at: Date.now(), value };
+  return value;
 }
 
 export function isTracingEnabled(): boolean {
@@ -404,6 +474,7 @@ export async function initTracing(): Promise<TracingStatus> {
       experimentId,
       experimentName,
       host,
+      getHeaders: auth.getHeadersProvider(),
     });
     logger.info(`tracing to experiment "${experimentName}" (id ${experimentId}) on ${host}`);
   } catch (e) {
