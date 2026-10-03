@@ -10,9 +10,17 @@ app's TS tracing writes per chat turn) get assessments attached automatically,
 asynchronously, on a sampled basis. The SQL warehouse runs the scheduled
 monitoring job — we point it at the app's serverless warehouse.
 
-Idempotent: an already-registered scorer name is re-started (with the new
-sample rate) instead of failing. No UC DDL anywhere (pitfall #3: CREATE OR
-REPLACE drops grants — this script creates nothing in UC).
+Idempotent: re-runs re-register (new version) and re-start the scorers. No
+UC DDL anywhere (pitfall #3: CREATE OR REPLACE drops grants — this script
+creates nothing in UC).
+
+Measured gotcha: the production Guidelines judge scores from the trace's
+ROOT span inputs/outputs (user message + final response) — it does NOT see
+child TOOL spans. Guidelines must therefore be verifiable from the response
+text alone; any "numbers must match tool outputs" rule is unverifiable for
+it and conservatively scores 'no' (observed twice, 2026-10-03). Tool-output
+grounding belongs to the OFFLINE eval (tool_call_correctness), not to this
+production judge.
 
 Usage:
   uv run tools/register_monitoring.py \
@@ -44,9 +52,10 @@ def build_scorer_specs():
                 name='barista_domain_rubric',
                 guidelines=(
                     'コーヒーショップのバリスタAIとして: (1) ユーザーの言語に合わせて応答していること'
-                    '(日本語の質問には日本語)。(2) 応答中の価格・カロリー等の数値が、トレース内の'
-                    'ツール(search_menu等)の出力と矛盾していないこと(矛盾がなければツール経由とみなす)。'
+                    '(日本語の質問には日本語)。(2) 提案・案内が具体的な商品名と数値(価格・カロリー等)を'
+                    '伴っていること(「おすすめです」だけの曖昧な応答は不可)。'
                     '(3) スタッフ専用機能(注文ステータス更新等)を客には提供しないこと。'
+                    'なお評価は最終応答テキストだけを根拠に行い、ツール出力の参照は求めないこと。'
                 ),
             ),
         ),
