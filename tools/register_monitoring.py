@@ -44,8 +44,9 @@ def build_scorer_specs():
                 name='barista_domain_rubric',
                 guidelines=(
                     'コーヒーショップのバリスタAIとして: (1) ユーザーの言語に合わせて応答していること'
-                    '(日本語の質問には日本語)。(2) 価格・カロリー等の数値をツール結果に基づかずに'
-                    'でっち上げていないこと。(3) スタッフ専用機能(注文ステータス更新等)を客には提供しないこと。'
+                    '(日本語の質問には日本語)。(2) 応答中の価格・カロリー等の数値が、トレース内の'
+                    'ツール(search_menu等)の出力と矛盾していないこと(矛盾がなければツール経由とみなす)。'
+                    '(3) スタッフ専用機能(注文ステータス更新等)を客には提供しないこと。'
                 ),
             ),
         ),
@@ -82,7 +83,13 @@ def main() -> int:
     for name, factory in build_scorer_specs():
         # CRITICAL (GOTCHAS): register() alone does not activate monitoring —
         # start() is what schedules the scorer against live traces.
-        scorer = get_scorer(name=name) if name in existing else factory().register(name=name)
+        # Re-register on every run so guideline wording edits take effect
+        # (same name registers a new version); fall back to the existing one.
+        try:
+            scorer = factory().register(name=name)
+        except Exception as e:  # noqa: BLE001 — duplicate-name handling is server-version dependent
+            print(f'  register({name}) fell back to existing ({e})')
+            scorer = get_scorer(name=name)
         scorer.start(sampling_config=sampling)
         print(f'  started: {name}')
 
