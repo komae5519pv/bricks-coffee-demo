@@ -466,7 +466,12 @@ export async function initTracing(): Promise<TracingStatus> {
   const experimentName = process.env.MLFLOW_EXPERIMENT_NAME ?? '/Shared/daiwt-coffee-shop-barista';
   try {
     const trackingUri = resolveTrackingUri();
-    const auth = createAuthProvider({ trackingUri });
+    // Apps injects DATABRICKS_HOST without a scheme; the SDK passes the host
+    // through verbatim and every fetch/span-export then fails URL parsing.
+    // Normalize here and override (explicit host wins over env/config file).
+    const envHost = process.env.DATABRICKS_HOST;
+    const hostOverride = envHost ? (envHost.startsWith('http') ? envHost : `https://${envHost}`) : undefined;
+    const auth = createAuthProvider({ trackingUri, host: hostOverride });
     const host = auth.getHost().replace(/\/$/, '');
     const experimentId = await resolveExperimentId(auth.getHeadersProvider(), host, experimentName);
     createMlflowBackend({

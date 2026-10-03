@@ -8,6 +8,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { MlflowClient } from 'mlflow-tracing/dist/clients/index.js';
+import type { TraceInfo } from 'mlflow-tracing/dist/core/entities/trace_info.js';
+import type { TraceData } from 'mlflow-tracing/dist/core/entities/trace_data.js';
 import { SpanStatusCode } from 'mlflow-tracing/dist/core/entities/span_status.js';
 import type { LiveSpan } from 'mlflow-tracing/dist/core/entities/span.js';
 import {
@@ -30,7 +32,7 @@ interface UploadedTrace {
 function mockClient() {
   const uploaded: UploadedTrace[] = [];
   const createTrace: MlflowClient['createTrace'] = vi.fn((info) => Promise.resolve(info));
-  const uploadTraceData: MlflowClient['uploadTraceData'] = vi.fn((info, data) => {
+  const uploadTraceData: MlflowClient['uploadTraceData'] = vi.fn((info: TraceInfo, data: TraceData) => {
     uploaded.push({ info: info as UploadedTrace['info'], spans: data.spans as LiveSpan[] });
     return Promise.resolve();
   });
