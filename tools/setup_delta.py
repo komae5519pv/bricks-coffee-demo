@@ -3,7 +3,10 @@
 
 Run AFTER Lakehouse Sync (CDF config) is ONLINE:
 
-  python3 tools/setup_delta.py [--profile fevm-konomi-demo] [--catalog C] [--schema S]
+  python3 tools/setup_delta.py --profile <PROFILE> [--catalog C] [--schema S] [-t TARGET]
+
+catalog/schema default to databricks.yml bundle variables (single source of
+truth); CLI arguments override them. See tools/bundle_defaults.py.
 
 Creates, in the UC schema:
   - views orders / order_items / customer_preferences / historical_orders / stores:
@@ -19,6 +22,9 @@ import json
 import pathlib
 import subprocess
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from bundle_defaults import add_common_args, resolve  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -58,10 +64,11 @@ TABLE_COMMENTS = {
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--profile', default='fevm-konomi-demo')
-    ap.add_argument('--catalog', default='konomi_demo_catalog')
-    ap.add_argument('--schema', default='cofee_shop')
+    add_common_args(ap)
+    ap.add_argument('--catalog', default=None, help='UC カタログ (省略時: databricks.yml の variables.catalog)')
+    ap.add_argument('--schema', default=None, help='UC スキーマ (省略時: databricks.yml の variables.schema)')
     args = ap.parse_args()
+    resolve(args, 'catalog', 'schema')
     p = args.profile
     fq = f'{args.catalog}.{args.schema}'
 

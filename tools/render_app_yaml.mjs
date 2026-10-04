@@ -37,6 +37,8 @@ const VAR_ENV = [
   ['COFFEE_SCHEMA', 'schema'],
   ['LAKEBASE_PROJECT', 'postgres_project'],
   ['GENIE_SPACE_ID', 'genie_space_id'],
+  ['SEED_STAFF_EMAIL', 'seed_staff_email'],
+  ['SEED_DEMO_PREFERENCES', 'seed_demo_preferences'],
 ];
 
 const argv = process.argv.slice(2);

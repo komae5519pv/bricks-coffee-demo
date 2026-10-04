@@ -30,7 +30,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "Unlicensed",
+  "license": "MIT",
   "description": "DAIWT Tokyo keynote coffee shop - 2026 rebuild with Lakebase + on-app agent",
   "dependencies": {
     "@databricks/appkit": "0.57.0",

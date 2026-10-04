@@ -18,3 +18,7 @@ env:
     value: 'projects/konomi-coffee-shop'
   - name: GENIE_SPACE_ID
     value: '01f1b7fc22dd131a98457d1273f90b8a'
+  - name: SEED_STAFF_EMAIL
+    value: 'konomi.omae@databricks.com'
+  - name: SEED_DEMO_PREFERENCES
+    value: 'true'

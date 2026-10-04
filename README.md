@@ -101,7 +101,10 @@ TEXT 型に移行済み(起動時マイグレーション `UUID_TO_TEXT_MIGRATIO
 - **バリスタ**: `get_my_frequent_items`(本人履歴の集計・回数付きランキング→画像カードで追加可)と `reorder_last`(直近注文と同じ SKU・数量をセットカードで返し「まとめて追加」)。履歴0件なら「まだ注文履歴がありません」と人気商品を案内
 - **注文ページ**: 「前回と同じ」クイックアクション(直近注文をワンクリックでカートに。注文店舗が表示店舗と違う場合は自動で店舗切替)と「よく注文する商品」セクション(×N バッジ付き小カード帯・履歴0件なら非表示)。/api/orders は `user_email = current_user` の明示フィルタで本人分のみ返す(RLS だけに頼らない。global staff でも他者の注文は混ざらない)
 - **ツールの OBO 構成**(重要): バリスタの DB ツールは coffee-tools ツールキットプラグイン経由で実行(`PluginContext.executeTool → asUser(req)` で実行時に本人コンテキスト。inline function tool だと SP 実行になり user_email=SP になってしまうため)
-- **RLS 実証**: 他者注文(other.user@example.com のデモ用注文 bb180140 が存在)があっても、ツールの owner フィルタ(user_email=current_user)では0件・frequent ランキングにも混入しない。/api/orders も owner フィルタで本人分のみ(スタッフの RLS 許可に頼らない)。店舗の全注文が見えるのは /api/board(キッチンボード)経由のみで、これはスタッフ業務としての設計通り
+- **RLS 実証**: 他者注文があっても、ツールの owner フィルタ(user_email=current_user)では0件・frequent ランキングにも混入しない。/api/orders も owner フィルタで本人分のみ(スタッフの RLS 許可に頼らない)。店舗の全注文が見えるのは /api/board(キッチンボード)経由のみで、これはスタッフ業務としての設計通り。
+  対照演示用の「他人の注文」は `SEED_DEMO_PREFERENCES=true` の環境ではシードが1件入る
+  (架空ユーザー demo.customer@example.com の done 注文。server/db.ts demoSeedStatements)。
+  本番にはこれとは別に手作りの検証注文(bb180140, other.user@example.com)も残っている
 
 ## チャット UI (フローティングオーバーレイ) + 会話履歴 (Lakebase 永続化)
 
@@ -384,11 +387,18 @@ OBO で「誰がアクセスしたか」を認識し、権限で見える画面�
 ## 環境パラメータの単一ソース
 
 **databricks.yml の variables が唯一の正**。カタログ/スキーマ/Lakebase/LLM/埋め込み/
-warehouse/Genie スペース ID は全てここ。app.yaml は生成物なので直接編集しない:
+warehouse/Genie スペース ID/シード設定は全てここ。app.yaml は生成物なので直接編集しない:
 
 ```bash
 npm run render:appyaml     # databricks.yml -> app.yaml 再生成 (tools/render_app_yaml.mjs)
 ```
+
+シード関連の変数 (アプリ初回起動時に server/db.ts が読む):
+
+| variable | app.yaml の env | 意味 |
+|---|---|---|
+| `seed_staff_email` | `SEED_STAFF_EMAIL` | このメールを staff ロールでシード(スタッフ UI が出る)。**デプロイ者は自分のメールを設定すること**。空なら staff シードなし |
+| `seed_demo_preferences` | `SEED_DEMO_PREFERENCES` | `'true'` で opt-in のデモ用データをシード: seed_staff_email の嗜好/長期記憶(Genie のアレルギー提案デモ用)+ RLS 対照演示用の他人注文1件(demo.customer@example.com) |
 
 別環境ターゲットの追加例は databricks.yml 末尾のコメント参照(事前に Lakebase ブランチと UC スキーマの作成が必要)。
 
@@ -408,19 +418,47 @@ databricks apps deploy --profile fevm-konomi-demo     # コード更新のデプ
 初回セットアップ(新規環境で再現する場合):
 
 ```bash
-# 1. Lakebase プロジェクト作成(既存ならスキップ)後、アプリをデプロイ(上記)
+# 0. プロビジョニング (冪等): UC カタログ/スキーマ・Lakebase プロジェクトを作成
+python3 tools/provision_env.py --profile fevm-konomi-demo     # --dry-run で事前確認可
+# 1. アプリをデプロイ(上記)
 # 2. Lakehouse Sync (CDC) 有効化 — PG スキーマ cofee_shop -> UC konomi_demo_catalog.cofee_shop
 databricks postgres create-cdf-config \
   projects/konomi-coffee-shop/branches/production/databases/databricks-postgres \
   konomi_demo_catalog cofee_shop cofee_shop \
   --cdf-config-id coffee_shop_cdc --profile fevm-konomi-demo
-# 3. Genie 用ビュー + menu_items Delta テーブル
+# 3. Genie 用ビュー + menu_items Delta テーブル (catalog/schema は databricks.yml から解決)
 python3 tools/setup_delta.py --profile fevm-konomi-demo
 # 4. アプリ SP に UC 読み取り権限(ステータスページの Delta 参照用)
 python3 tools/grant_app_sp_uc.py --profile fevm-konomi-demo
-# 5. Genie スペース作成(REST API: POST /api/2.0/genie/spaces、CLI は `databricks genie create-space`)
-#    作成した space id を databricks.yml の genie_space_id に記録 -> render:appyaml -> apps deploy
+# 5. Genie スペース作成 (bundle deploy 済みなら post_deploy.sh が ID を自動記入。
+#    bundle を使わない場合は tools/create_genie_space.py --profile fevm-konomi-demo。
+#    作成した space id を databricks.yml の genie_space_id に記録 -> render:appyaml -> apps deploy)
 ```
+
+## ローカル開発 (.env)
+
+`npm run dev` / `npm start` は `.env` を読む (gitignore 済み・実値はコミットしない)。
+`.env.example` をコピーしてプレースホルダを自分の値に置き換える:
+
+```bash
+cp .env.example .env
+```
+
+各値の調べ方:
+
+- `DATABRICKS_CONFIG_PROFILE` … 自分の CLI プロファイル (`databricks auth profiles`)
+- `PGHOST` … Lakebase エンドポイントのホスト名:
+
+  ```bash
+  databricks postgres get-endpoint \
+    projects/<lakebase_project_id>/branches/production/endpoints/primary \
+    -o json --profile <PROFILE> | python3 -c "import json,sys; print(json.load(sys.stdin)['status']['hosts']['host'])"
+  ```
+- `LAKEBASE_ENDPOINT` / `DATABRICKS_APP_NAME` … databricks.yml の variables に合わせる
+- `DATABRICKS_SERVING_ENDPOINT_NAME` / `EMBEDDING_ENDPOINT_NAME` … FMAPI のエンドポイント名
+  (リージョン可用性の注意は「新環境チェックリスト」参照)
+- `SEED_STAFF_EMAIL` / `SEED_DEMO_PREFERENCES` … ローカル起動時のシード (省略可。
+  本番は databricks.yml → app.yaml から注入される)
 
 ## 再現デプロイ (DABs)
 
@@ -436,6 +474,19 @@ python3 tools/grant_app_sp_uc.py --profile fevm-konomi-demo
 - ワークスペース権限: Apps 作成・Lakebase プロジェクト作成・既存 UC カタログへの CREATE SCHEMA・
   SQL warehouse の CAN_USE・モデルサービングエンドポイント (kimi-k3 / qwen3 embedding) の CAN_QUERY
 - 自分の CLI プロファイル (OAuth)
+
+### 新環境チェックリスト (自分のワークスペース向け差し替え一覧)
+
+| 項目 | 置き場 / 調べ方 |
+|---|---|
+| host / profile | databricks.yml には書かない。`databricks auth login --host <自分のWS URL> --profile <PROFILE>` でプロファイルを作り、全コマンドに `--profile <PROFILE>` を付ける |
+| root_path (bundle のデプロイ先) | databricks.yml に書かない。bundle デフォルトが `/Workspace/Users/${workspace.current_user.userName}/.bundle/...` なのでデプロイ者のホームに自動で解決される |
+| `catalog` | databricks.yml の `targets.dev.variables`(または `--var`)。CREATE SCHEMA 可能な既存 UC カタログ。無ければ `python3 tools/provision_env.py --profile <PROFILE>` が作成を試みる(メタストアの CREATE CATALOG 権限が必要) |
+| `warehouse_id` | `databricks warehouses list --profile <PROFILE>` で ID を確認し databricks.yml に設定。Genie・Delta 参照・モニタリングジョブが共用 |
+| `schema` / Lakebase プロジェクト名 (`lakebase_project_id`) | databricks.yml の variables。デフォルト `cofee_shop` / `coffee-shop`。同一 WS に同居させる場合だけ変更 |
+| Genie スペース ID (`genie_space_id`) | 手動設定不要。bundle deploy 後に `scripts/post_deploy.sh` が検出・記入(bundle を使わない場合は `python3 tools/create_genie_space.py --profile <PROFILE>`) |
+| `seed_staff_email` | **デプロイ者は自分のメールを databricks.yml に設定**(アプリ初回起動時に staff としてシードされ、スタッフ UI が出る)。`seed_demo_preferences: 'true'` で嗜好/長期記憶/RLS 演示用の他人注文もシード |
+| モデルエンドポイント (`agents_serving_endpoint_name` / `embedding_endpoint_name`) | デフォルトは `databricks-kimi-k3` / `databricks-qwen3-embedding-0-6b` (FMAPI)。**リージョンによっては未提供**なので、自分の WS で `databricks serving-endpoints get <名前> --profile <PROFILE>` が通るか確認。無ければ利用可能なエンドポイント名に差し替え |
 
 ### 手順 (3コマンド + 仕上げ1本)
 
@@ -494,20 +545,14 @@ scripts/post_deploy.sh   --profile <PROFILE>  # 仕上げ (冪等)
 
 ### フォールバック: Genie スペースを bundle を使わず REST で作る
 
-`genie/genie_space.json` のプレースホルダを置換して POST する (作成後の ID 記入は post_deploy.sh がやる):
+`tools/create_genie_space.py` が `genie/genie_space.json` のプレースホルダ
+(`__UC_CATALOG__` / `__UC_SCHEMA__` / `__DEMO_USER_EMAIL__` / `__WAREHOUSE_ID__` 等)を
+databricks.yml の variables と自分のユーザー名で置換して `POST /api/2.0/genie/spaces` し、
+作成した space ID を databricks.yml に記入 → app.yaml 再生成まで行う:
 
 ```bash
-python3 - <<'EOF'
-import json, subprocess
-body = json.load(open('genie/genie_space.json'))
-s = json.dumps(body['serialized_space'], ensure_ascii=False)
-s = (s.replace('__UC_CATALOG__', '<CATALOG>').replace('__UC_SCHEMA__', '<SCHEMA>')
-      .replace('__DEMO_USER_EMAIL__', '<YOUR_EMAIL>'))
-body.update(serialized_space=s, warehouse_id='<WAREHOUSE_ID>',
-            parent_path='/Workspace/Users/<YOUR_EMAIL>', title='BRICKS COFFEE (Lakebase CDC デモ)')
-subprocess.run(['databricks', 'api', 'post', '/api/2.0/genie/spaces', '--profile', '<PROFILE>',
-                '--json', json.dumps(body, ensure_ascii=False)], check=True)
-EOF
+python3 tools/create_genie_space.py --profile <PROFILE>             # --dry-run で body 確認
+databricks apps deploy --profile <PROFILE>                          # GENIE_SPACE_ID を反映
 ```
 
 ## 品質ゲート
@@ -540,3 +585,16 @@ ETIMEDOUT となりデプロイが失敗したため(手元のネットワーク
 - チャットのツール結果紐付け(toolNameByCallId)はセッション内 Map 保持のため、極端に長い
   会話ではわずかに増大する(実用上は無害)。
 - ページの言語は日本語中心。価格はすべて円(整数・店舗により価格差あり)。
+
+## ライセンス・ブランチ方針
+
+- ライセンスは MIT (LICENSE)。同梱の world-atlas (ISC) の著作権表示は NOTICE を参照。
+  vendor/ 配下の npm tarball は各パッケージのライセンスに従う
+- **push 対象は main ブランチのみ**。実験ブランチ (agent-memory / dabs-packaging /
+  integrate-all / kimi-k3-model-switch / mlflow-tracing-eval / public-scrub) は
+  main にマージ済みか意図的な派生 (public-scrub = 公開用スクラブ) で、ローカル保持とする
+  (削除しない)。main に必要なコードはすべて main にある
+- **社内共有が前提の場合の注記**: main の README には本番ワークスペース名
+  (fevm-konomi-demo)・アプリ URL・デプロイ者のメールアドレスが残っている。
+  社外に公開する場合は、これらの内部情報を落とすスクラブ (public-scrub ブランチの
+  方向性) と、社内の OSS 公開プロセスの確認を先に行うこと

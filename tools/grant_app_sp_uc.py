@@ -6,14 +6,21 @@ Statement Execution API as the app SP. The sql-warehouse resource only grants
 CAN_USE on the warehouse — UC data permissions are separate and must be
 granted once after the app is first created:
 
-  python3 tools/grant_app_sp_uc.py [--profile fevm-konomi-demo] [--catalog C] [--schema S] [--app-name A]
+  python3 tools/grant_app_sp_uc.py --profile <PROFILE> [--catalog C] [--schema S] [--app-name A] [-t TARGET]
+
+catalog/schema/app-name default to databricks.yml bundle variables (single
+source of truth); CLI arguments override them. See tools/bundle_defaults.py.
 
 Idempotent (GRANT is additive).
 """
 import argparse
 import json
+import pathlib
 import subprocess
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from bundle_defaults import add_common_args, resolve  # noqa: E402
 
 
 def cli(*args: str, profile: str) -> str:
@@ -26,11 +33,12 @@ def cli(*args: str, profile: str) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--profile', default='fevm-konomi-demo')
-    ap.add_argument('--catalog', default='konomi_demo_catalog')
-    ap.add_argument('--schema', default='cofee_shop')
-    ap.add_argument('--app-name', default='daiwt-coffee-shop')
+    add_common_args(ap)
+    ap.add_argument('--catalog', default=None, help='UC カタログ (省略時: databricks.yml の variables.catalog)')
+    ap.add_argument('--schema', default=None, help='UC スキーマ (省略時: databricks.yml の variables.schema)')
+    ap.add_argument('--app-name', default=None, help='アプリ名 (省略時: databricks.yml の variables.app_name)')
     args = ap.parse_args()
+    resolve(args, 'catalog', 'schema', 'app_name')
 
     app = json.loads(cli('apps', 'get', args.app_name, '-o', 'json', profile=args.profile))
     sp = app['service_principal_client_id']

@@ -304,32 +304,78 @@ ALTER TABLE cofee_shop.customer_preferences REPLICA IDENTITY FULL;
 ALTER TABLE cofee_shop.staff REPLICA IDENTITY FULL;
 `;
 
-const STAFF_SEED = `
-INSERT INTO cofee_shop.staff (email, display_name, store_id)
-VALUES ('konomi.omae@databricks.com', 'Konomi Omae', NULL)
-ON CONFLICT (email) DO NOTHING;
-`;
-
-/** Demo preferences so the Genie demo can show allergy-aware suggestions out of the box. */
-const PREFERENCES_SEED = `
-INSERT INTO cofee_shop.customer_preferences (user_email, preference_key, preference_value, note)
-VALUES
-  ('konomi.omae@databricks.com', 'milk_allergy', 'true', '牛乳アレルギー。乳成分(ミルク・ホイップ・クリーム系)を避ける'),
-  ('konomi.omae@databricks.com', 'likes', 'matcha, espresso', '抹茶系とエスプレッソ系が好み')
-ON CONFLICT (user_email, preference_key) DO NOTHING;
-`;
-
 /**
- * Demo long-term memories, as if the barista had extracted them from past
- * conversations — the status page memory card is non-empty out of the box.
+ * Demo identity seeds, env-driven so another engineer can redeploy the demo
+ * under their own identity (databricks.yml variables seed_staff_email /
+ * seed_demo_preferences → app.yaml via tools/render_app_yaml.mjs):
+ *
+ * - SEED_STAFF_EMAIL: staff roster row for the deployer (unlocks the staff
+ *   UI: kitchen board / menu admin / history / status). Unset = no staff.
+ * - SEED_DEMO_PREFERENCES=true: opt-in demo data — allergy/preference profile
+ *   and long-term memories for SEED_STAFF_EMAIL (powers the Genie
+ *   allergy-aware suggestion demo), plus one order owned by a fictional
+ *   other customer so the RLS contrast demo ("you can't see other people's
+ *   orders") works in a fresh environment.
  */
-const MEMORIES_SEED = `
-INSERT INTO cofee_shop.user_memories (user_email, kind, content, source)
+
+/** Fictional "other customer" for the RLS contrast demo (not a real person). */
+export const DEMO_OTHER_USER_EMAIL = 'demo.customer@example.com';
+const DEMO_OTHER_ORDER_ID = 'rls-demo-other-order';
+
+export interface SeedStatement {
+  text: string;
+  values: unknown[];
+}
+
+/** Pure builder (exported for tests). Emails stay in bind params, never in SQL text. */
+export function demoSeedStatements(env: Record<string, string | undefined>): SeedStatement[] {
+  const staffEmail = env.SEED_STAFF_EMAIL?.trim();
+  const demoData = /^(1|true|yes)$/i.test(env.SEED_DEMO_PREFERENCES?.trim() ?? '');
+  const stmts: SeedStatement[] = [];
+
+  if (staffEmail) {
+    stmts.push({
+      text: `INSERT INTO cofee_shop.staff (email, display_name, store_id)
+VALUES ($1, $2, NULL)
+ON CONFLICT (email) DO NOTHING`,
+      values: [staffEmail, staffEmail.split('@')[0]],
+    });
+    if (demoData) {
+      stmts.push({
+        text: `INSERT INTO cofee_shop.customer_preferences (user_email, preference_key, preference_value, note)
 VALUES
-  ('konomi.omae@databricks.com', 'habit', 'いつも抹茶ラテのMサイズを頼む', 'agent'),
-  ('konomi.omae@databricks.com', 'preference', '甘さ控えめが好み', 'agent')
-ON CONFLICT (user_email, content) DO NOTHING;
-`;
+  ($1, 'milk_allergy', 'true', '牛乳アレルギー。乳成分(ミルク・ホイップ・クリーム系)を避ける'),
+  ($1, 'likes', 'matcha, espresso', '抹茶系とエスプレッソ系が好み')
+ON CONFLICT (user_email, preference_key) DO NOTHING`,
+        values: [staffEmail],
+      });
+      stmts.push({
+        text: `INSERT INTO cofee_shop.user_memories (user_email, kind, content, source)
+VALUES
+  ($1, 'habit', 'いつも抹茶ラテのMサイズを頼む', 'agent'),
+  ($1, 'preference', '甘さ控えめが好み', 'agent')
+ON CONFLICT (user_email, content) DO NOTHING`,
+        values: [staffEmail],
+      });
+    }
+  }
+
+  if (demoData) {
+    stmts.push({
+      text: `INSERT INTO cofee_shop.orders (id, store_id, user_email, customer_name, channel, status, total_price, currency, created_at)
+VALUES ($1, 'TYO001', $2, 'Demo Customer', 'manual', 'done', 800, 'JPY', '2026-09-01T09:00:00Z')
+ON CONFLICT (id) DO NOTHING`,
+      values: [DEMO_OTHER_ORDER_ID, DEMO_OTHER_USER_EMAIL],
+    });
+    stmts.push({
+      text: `INSERT INTO cofee_shop.order_items (order_id, user_email, sku, item_name, size, unit_price, quantity)
+SELECT $1, $2, 'TYO001-POUR-M', 'ハンドドリップ', 'M', 800, 1
+WHERE NOT EXISTS (SELECT 1 FROM cofee_shop.order_items WHERE order_id = $1)`,
+      values: [DEMO_OTHER_ORDER_ID, DEMO_OTHER_USER_EMAIL],
+    });
+  }
+  return stmts;
+}
 
 function chunked<T>(arr: readonly T[], size: number): T[][] {
   const out: T[][] = [];
@@ -511,9 +557,9 @@ export async function initializeDatabase(db: BootstrapDb, serving: EmbeddingsInv
   await seedIfEmpty(db);
   await db.query(RLS);
   await db.query(GRANTS);
-  await db.query(STAFF_SEED);
-  await db.query(PREFERENCES_SEED);
-  await db.query(MEMORIES_SEED);
+  for (const stmt of demoSeedStatements(process.env)) {
+    await db.query(stmt.text, stmt.values);
+  }
   await db.query(CDC_REPLICA_IDENTITY);
   await db.query(IMAGE_COLUMNS_MIGRATION);
   await db.query(STORE_GEO_MIGRATION);

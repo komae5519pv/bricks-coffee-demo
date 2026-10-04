@@ -66,6 +66,14 @@ variables:
   demo_user_email:
     description: Genie の指示文で「私」として扱うデモユーザーのメールアドレス
     default: ${workspace.current_user.userName}
+  seed_staff_email:
+    description: アプリ初回起動時に staff ロールでシードするデプロイ者のメールアドレス
+      (空なら staff シードなし = スタッフ UI は出ない)
+    default: ''
+  seed_demo_preferences:
+    description: '"true" でデモ用データ (SEED_STAFF_EMAIL の嗜好/長期記憶 + RLS 演示用の
+      他人注文 1 件) をシードする (opt-in)'
+    default: 'false'
   secret_scope:
     description: シークレットスコープ名 (Unsplash キー等の格納用。値の投入は post_deploy.sh / 手動)
     default: daiwt-coffee-shop
@@ -92,7 +100,9 @@ targets:
         catalog: konomi_demo_catalog,
         warehouse_id: 348478745ad64b30,
         lakebase_project_id: konomi-coffee-shop,
-        genie_space_id: 01f1b7fc22dd131a98457d1273f90b8a
+        genie_space_id: 01f1b7fc22dd131a98457d1273f90b8a,
+        seed_staff_email: konomi.omae@databricks.com,
+        seed_demo_preferences: 'true'
       }
   # ---------------------------------------------------------------------------
   # 別ターゲットの追加例 (Lakebase ブランチや UC スキーマを変えて同居させる):
